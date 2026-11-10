@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import boto3
 import pytest
 from botocore.stub import Stubber
@@ -31,11 +33,18 @@ def test_polls_until_terminal_state(glue):
     stub.add_response("start_job_run", {"JobRunId": "jr_1"}, {"JobName": "job", "Arguments": {"--a": "1"}})
     _get(stub, "STARTING")
     _get(stub, "RUNNING")
-    _get(stub, "SUCCEEDED", ExecutionTime=120, DPUSeconds=240.0)
+    _get(
+        stub,
+        "SUCCEEDED",
+        ExecutionTime=120,
+        DPUSeconds=240.0,
+        CompletedOn=datetime(2026, 11, 10, 15, 0, tzinfo=UTC),
+    )
     sleeps = []
     result = start_and_wait(client, "job", {"--a": "1"}, poll_seconds=5, sleep=sleeps.append)
     assert (result.state, result.execution_time_seconds, result.dpu_seconds) == ("SUCCEEDED", 120, 240.0)
     assert result.succeeded and sleeps == [5, 5]
+    assert result.completed_on == datetime(2026, 11, 10, 15, 0, tzinfo=UTC)
 
 
 def test_failed_run_reports_error(glue):

@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     arguments = dict(a.split("=", 1) for a in args.arg)
     glue = build_session(region=args.region).client("glue")
     result = start_and_wait(glue, args.job_name, arguments, timeout_seconds=args.timeout_seconds)
-    print(json.dumps({**asdict(result), "succeeded": result.succeeded}, indent=2))
+    print(json.dumps({**asdict(result), "succeeded": result.succeeded}, indent=2, default=str))
     return 0 if result.succeeded else 1
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 TERMINAL_STATES = {"SUCCEEDED", "FAILED", "STOPPED", "TIMEOUT", "ERROR", "EXPIRED"}
 
@@ -17,6 +18,7 @@ class GlueRunResult:
     execution_time_seconds: int | None
     dpu_seconds: float | None
     error_message: str | None
+    completed_on: datetime | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -49,6 +51,7 @@ def start_and_wait(
                 execution_time_seconds=run.get("ExecutionTime"),
                 dpu_seconds=run.get("DPUSeconds"),
                 error_message=run.get("ErrorMessage"),
+                completed_on=run.get("CompletedOn"),
             )
         if clock() >= deadline:
             raise TimeoutError(f"{job_name} run {run_id} still {state} after {timeout_seconds}s")

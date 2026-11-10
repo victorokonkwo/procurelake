@@ -193,6 +193,20 @@ cdc-apply: ## Run the CDC apply Glue job (Bronze DMS files -> Silver) and wait; 
 	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw apply_cdc_job_name) \
 	  $$(T=$$($(CDCOUT) -raw replication_task_arn 2>/dev/null); [ "$${T#arn:}" != "$$T" ] && echo "--arg=--dms-task-arn=$$T")
 
+.PHONY: cdc-freshness
+cdc-freshness: ## C5 gate, live: workload -> DMS -> CDC apply -> dbt build; per-change checks + latency p95
+	uv run python scripts/aws/cdc_freshness.py \
+	  --host $$($(CDCOUT) -raw source_address) --port $$($(CDCOUT) -raw source_port) \
+	  --database $$($(CDCOUT) -raw source_database_name) \
+	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
+	  --task-arn $$($(CDCOUT) -raw replication_task_arn) \
+	  --glue-job $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw apply_cdc_job_name) \
+	  --engineer-role-arn $$($(TFOUT) -raw data_engineer_role_arn) \
+	  --workgroup $$($(TFOUT) -raw athena_workgroup_name) \
+	  --silver-database $$($(TFOUT) -raw silver_database_name) \
+	  --gold-database $$($(TFOUT) -raw gold_database_name) \
+	  --seed $(or $(SEED_WL),11) --operations $(or $(OPS),40)
+
 .PHONY: cdc-down
 cdc-down: ## Destroy the dev/cdc stack (asks for confirmation; Bronze data and state are kept)
 	terraform -chdir=$(CDC_TF) destroy -input=true -var enable_dms=true
