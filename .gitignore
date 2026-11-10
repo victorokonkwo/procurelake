@@ -24,6 +24,10 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+# Local variable values and backend config (account IDs, emails) stay out of the public repo
+*.tfvars
+!*.tfvars.example
+backend.hcl
 
 # dbt generated artifacts
 dbt/target/
@@ -42,3 +46,6 @@ data/
 
 AGENTS.md
 CLAUDE.md
+
+# Local ingestion output (make ingest-usaspending-local)
+local_lake/

@@ -1,0 +1,20 @@
+# Source contract: operational agencies (procurement.agencies, migration V0001).
+contract_version: 1
+name: agencies
+source_system: procurelake_oltp
+physical: {system: postgresql, schema: procurement, table: agencies}
+owner: procurement-platform
+description: Government agencies (buying organisations) belonging to a tenant.
+grain: One row per agency.
+data_classification: synthetic
+tenant_scoped: true
+primary_key: [agency_id]
+foreign_keys:
+  - {columns: [tenant_id], references_table: tenants, references_columns: [tenant_id]}
+change_capture: {mode: cdc, source_updated_at_column: updated_at, deletes: hard}
+columns:
+  - {name: agency_id, type: uuid, nullable: false, description: Agency identifier.}
+  - {name: tenant_id, type: text, nullable: false, description: Owning tenant (unique with agency_name).}
+  - {name: agency_name, type: text, nullable: false, description: Agency name; unique within a tenant.}
+  - {name: created_at, type: timestamptz, nullable: false, description: Row creation time.}
+  - {name: updated_at, type: timestamptz, nullable: false, description: Last update time (trigger-maintained).}

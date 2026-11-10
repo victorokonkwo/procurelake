@@ -1,0 +1,23 @@
+# Source contract: operational suppliers (procurement.suppliers, migration V0001).
+contract_version: 1
+name: suppliers
+source_system: procurelake_oltp
+physical: {system: postgresql, schema: procurement, table: suppliers}
+owner: procurement-platform
+description: >-
+  Suppliers registered by a tenant. Names are not unique: near-duplicate spellings exist by
+  design and are canonicalised downstream (dim_supplier).
+grain: One row per supplier registration.
+data_classification: synthetic
+tenant_scoped: true
+primary_key: [supplier_id]
+foreign_keys:
+  - {columns: [tenant_id], references_table: tenants, references_columns: [tenant_id]}
+change_capture: {mode: cdc, source_updated_at_column: updated_at, deletes: hard}
+columns:
+  - {name: supplier_id, type: uuid, nullable: false, description: Supplier identifier.}
+  - {name: tenant_id, type: text, nullable: false, description: Owning tenant.}
+  - {name: supplier_name, type: text, nullable: false, description: Supplier name as registered (not canonical).}
+  - {name: category, type: text, nullable: false, description: Procurement category of the supplier.}
+  - {name: created_at, type: timestamptz, nullable: false, description: Row creation time.}
+  - {name: updated_at, type: timestamptz, nullable: false, description: Last update time (trigger-maintained).}

@@ -69,6 +69,63 @@ format: ## Apply Ruff formatting and autofixes
 	uv run ruff format .
 	uv run ruff check --fix .
 
+TF_DIRS := infrastructure/modules/kms infrastructure/modules/budgets infrastructure/modules/s3_lakehouse \
+           infrastructure/modules/iam infrastructure/modules/glue_catalog infrastructure/modules/athena \
+           infrastructure/bootstrap infrastructure/live/dev/foundation
+
+.PHONY: tf-fmt
+tf-fmt: ## terraform fmt check (recursive)
+	terraform fmt -check -recursive infrastructure
+
+.PHONY: tf-validate
+tf-validate: ## terraform init (no backend) + validate for every module and root (offline)
+	@set -e; for d in $(TF_DIRS); do echo "== $$d"; terraform -chdir=$$d init -backend=false -input=false >/dev/null; terraform -chdir=$$d validate; done
+
+.PHONY: tf-test
+tf-test: tf-validate ## terraform test with a mock AWS provider (offline, creates nothing)
+	@set -e; for d in $(TF_DIRS); do echo "== $$d"; terraform -chdir=$$d test; done
+
+.PHONY: bootstrap-plan
+bootstrap-plan: ## Plan the bootstrap stack (needs AWS credentials + terraform.tfvars)
+	terraform -chdir=infrastructure/bootstrap init -input=false
+	terraform -chdir=infrastructure/bootstrap plan -input=false -out=bootstrap.tfplan
+
+.PHONY: dev-foundation-plan
+dev-foundation-plan: ## Plan dev/foundation (needs AWS credentials, backend.hcl, terraform.tfvars)
+	terraform -chdir=infrastructure/live/dev/foundation init -input=false -backend-config=backend.hcl
+	terraform -chdir=infrastructure/live/dev/foundation plan -input=false -out=foundation.tfplan
+
+DEV_TF := infrastructure/live/dev/foundation
+
+.PHONY: ingest-usaspending
+ingest-usaspending: ## Ingest one settled day from USAspending into dev Bronze as the ingestion role (DATE=YYYY-MM-DD)
+	@test -n "$(DATE)" || { echo "Usage: make ingest-usaspending DATE=YYYY-MM-DD"; exit 1; }
+	PROCURELAKE_GIT_SHA=$$(git rev-parse --short HEAD) uv run python -m procurelake.ingestion.cli usaspending \
+	  --date $(DATE) \
+	  --raw-bucket $$(terraform -chdir=$(DEV_TF) output -json bucket_names | uv run python -c "import sys,json;print(json.load(sys.stdin)['raw'])") \
+	  --manifest-bucket $$(terraform -chdir=$(DEV_TF) output -json bucket_names | uv run python -c "import sys,json;print(json.load(sys.stdin)['artifacts'])") \
+	  --role-arn $$(terraform -chdir=$(DEV_TF) output -raw ingestion_role_arn)
+
+.PHONY: ingest-usaspending-local
+ingest-usaspending-local: ## Ingest one settled day into ./local_lake (no AWS) (DATE=YYYY-MM-DD)
+	@test -n "$(DATE)" || { echo "Usage: make ingest-usaspending-local DATE=YYYY-MM-DD"; exit 1; }
+	uv run python -m procurelake.ingestion.cli usaspending --date $(DATE) --local-root local_lake
+
+TFOUT = terraform -chdir=$(DEV_TF) output
+BUCKET = $$($(TFOUT) -json bucket_names | uv run python -c "import sys,json;print(json.load(sys.stdin)['$(1)'])")
+
+.PHONY: test-aws
+test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evidence in build/evidence/
+	PROCURELAKE_AWS_TESTS=1 \
+	PROCURELAKE_DEV_RAW_BUCKET=$(call BUCKET,raw) \
+	PROCURELAKE_DEV_ARTIFACTS_BUCKET=$(call BUCKET,artifacts) \
+	PROCURELAKE_DEV_DATA_KMS_KEY_ARN=$$($(TFOUT) -raw data_kms_key_arn) \
+	PROCURELAKE_DEV_INGESTION_ROLE_ARN=$$($(TFOUT) -raw ingestion_role_arn) \
+	PROCURELAKE_DEV_DATA_ENGINEER_ROLE_ARN=$$($(TFOUT) -raw data_engineer_role_arn) \
+	PROCURELAKE_DEV_ATHENA_WORKGROUP=$$($(TFOUT) -raw athena_workgroup_name) \
+	PROCURELAKE_DEV_BRONZE_DATABASE=$$($(TFOUT) -raw bronze_database_name) \
+	uv run pytest -m aws -v --junitxml=build/test-results/aws-integration.xml tests/integration/aws
+
 .PHONY: test-unit
 test-unit: ## Unit tests (no services required)
 	uv run pytest tests/unit
