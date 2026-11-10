@@ -86,5 +86,6 @@ So the owner approved an experiment first.
 - Every `dbt_transformation` run ends with `tenant_access_check`, which queries every mart as
   every tenant and fails with an SNS alert if access was lost or a foreign row is visible. A
   dropped grant therefore cannot go unnoticed for longer than one run.
-- Still open: column-level controls, and live runs of the failure paths (export failure, check
-  failure).
+- The check's failure path was drilled live (`make tenant-access-drill`): a temporary unfiltered
+  grant made it fail with `ForeignRowsVisible` and send an alert; after the revoke it passed.
+- Still open: column-level controls, and a live run of the export failure path.

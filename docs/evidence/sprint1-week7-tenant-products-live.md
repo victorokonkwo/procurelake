@@ -92,10 +92,22 @@ Functions yet. A plain re-apply succeeded.
 The export role could not publish to the KMS-encrypted alerts topic, so a failed export would
 have sent no alert. The role now has the data key, as `cdc_processing` already did.
 
+## Failure drill (`make tenant-access-drill`)
+
+`scripts/aws/tenant_access_drill.py` breaks isolation on purpose for about a minute, then
+restores it. Raw record: `build/evidence/tenant_access_drill_20261110T221655Z.json` (not committed).
+
+| Step (UTC) | Result |
+|---|---|
+| 22:16:56 | Alder granted an unfiltered `SELECT` on `mart_supplier_concentration`, outside Terraform, so Alder also sees Birch's rows |
+| Check `drill-broken-20261110T221655Z` | **FAILED**: `ForeignRowsVisible`, then `TenantAccessCheckFailed` |
+| Alerts topic | 1 message published in the window. The KMS-encrypted topic accepts the check's alert |
+| 22:18:17 | Grant revoked (81 s after it was given; the revoke is in a `finally` block) |
+| Check `drill-restored-20261110T221655Z` | **SUCCEEDED** |
+| Afterwards | No table-level grant for either tenant on that mart; `terraform plan` on `dev/security`: no changes |
+
 ## What this does not show
 
 - **The failure path.** The SNS alert on a failed export was not triggered live.
 - **A scheduled run.** The first scheduled run is at 06:00 on 2026-11-11.
 - **Column-level controls.** None are applied; the filters include all columns.
-- **The access check failing live.** It passes live; its failure path (a foreign row is visible)
-  is covered by unit tests only.

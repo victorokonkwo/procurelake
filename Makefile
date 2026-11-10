@@ -132,6 +132,17 @@ orchestration-run: ## Start cdc_processing once by hand and wait (dev/cdc must b
 	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_processing_state_machine_arn) \
 	  --input "{\"dms_task_arn\": \"$$($(CDCOUT) -raw replication_task_arn)\"}"
 
+SECOUT = terraform -chdir=infrastructure/live/dev/security output
+
+.PHONY: tenant-access-drill
+tenant-access-drill: ## Failure drill: briefly let Alder see Birch rows; the access check must fail and alert, then pass (ADR 0030)
+	uv run python scripts/aws/tenant_access_drill.py \
+	  --account-id $$(aws sts get-caller-identity --query Account --output text) \
+	  --check-arn $$($(SECOUT) -raw tenant_access_check_state_machine_arn) \
+	  --tenant-role-arn $$($(SECOUT) -json tenant_role_arns | uv run python -c "import sys,json;print(json.load(sys.stdin)['tenant_alder'])") \
+	  --alerts-topic-arn $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw pipeline_alerts_topic_arn) \
+	  --database $$($(TFOUT) -raw gold_database_name)
+
 .PHONY: tenant-exports-run
 tenant-exports-run: ## Run the daily tenant Parquet exports once by hand and wait (ADR 0030)
 	uv run python scripts/aws/run_state_machine.py \
