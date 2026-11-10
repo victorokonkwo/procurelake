@@ -71,7 +71,9 @@ format: ## Apply Ruff formatting and autofixes
 
 TF_DIRS := infrastructure/modules/kms infrastructure/modules/budgets infrastructure/modules/s3_lakehouse \
            infrastructure/modules/iam infrastructure/modules/glue_catalog infrastructure/modules/athena \
-           infrastructure/modules/glue_spark_job \
+           infrastructure/modules/glue_spark_job infrastructure/modules/dms_account_roles \
+           infrastructure/modules/cdc_network infrastructure/modules/rds_postgresql \
+           infrastructure/modules/dms_s3_cdc infrastructure/live/dev/cdc \
            infrastructure/bootstrap infrastructure/live/dev/foundation infrastructure/live/dev/data_platform
 
 .PHONY: tf-fmt
@@ -149,6 +151,35 @@ dbt-build: ## dbt build (Gold models + tests) on dev Athena as the data-engineer
 	PROCURELAKE_ATHENA_WORKGROUP=$$($(TFOUT) -raw athena_workgroup_name) \
 	uv run --group dbt python scripts/aws/with_role.py $$($(TFOUT) -raw data_engineer_role_arn) -- \
 	  uv run --group dbt dbt build $(DBT_DIRS)
+
+# CDC (ADR 0027): disposable, hourly-billed stack. Destroy it after every session (cdc-down).
+CDC_TF := infrastructure/live/dev/cdc
+CDCOUT = terraform -chdir=$(CDC_TF) output
+
+.PHONY: cdc-plan
+cdc-plan: ## Plan dev/cdc phase 1 (network, RDS, secrets); PHASE=2 adds DMS (needs backend.hcl, terraform.tfvars)
+	terraform -chdir=$(CDC_TF) init -input=false -backend-config=backend.hcl
+	terraform -chdir=$(CDC_TF) plan -input=false -var enable_dms=$(if $(filter 2,$(PHASE)),true,false) -out=cdc.tfplan
+
+.PHONY: cdc-source-setup
+cdc-source-setup: ## Migrate + seed the RDS source and create the DMS user (after phase 1 apply)
+	uv run python scripts/aws/cdc_source_setup.py \
+	  --host $$($(CDCOUT) -raw source_address) --port $$($(CDCOUT) -raw source_port) \
+	  --database $$($(CDCOUT) -raw source_database_name) \
+	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
+	  --replication-secret-arn $$($(CDCOUT) -raw replication_secret_arn)
+
+.PHONY: cdc-workload
+cdc-workload: ## Apply the CDC workload to the RDS source (SEED=7 OPS=40); changes recorded in build/evidence/
+	uv run python scripts/aws/cdc_workload.py \
+	  --host $$($(CDCOUT) -raw source_address) --port $$($(CDCOUT) -raw source_port) \
+	  --database $$($(CDCOUT) -raw source_database_name) \
+	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
+	  --seed $(or $(SEED_WL),7) --operations $(or $(OPS),40)
+
+.PHONY: cdc-down
+cdc-down: ## Destroy the dev/cdc stack (asks for confirmation; Bronze data and state are kept)
+	terraform -chdir=$(CDC_TF) destroy -input=true -var enable_dms=true
 
 .PHONY: test-aws
 test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evidence in build/evidence/

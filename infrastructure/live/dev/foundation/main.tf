@@ -66,3 +66,11 @@ module "iam" {
   ]
   glue_writable_database_names = [module.catalog.gold_database_name, module.catalog.gold_staging_database_name]
 }
+
+# Roles AWS DMS requires by exact name (CDC, ADR 0027). Free; kept here so the disposable
+# dev/cdc stack never has to create them.
+module "dms_account_roles" {
+  source = "../../../modules/dms_account_roles"
+
+  aws_account_id = var.aws_account_id
+}

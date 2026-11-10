@@ -32,5 +32,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0024 | Silver framework: validation, quarantine, Iceberg snapshot apply | Accepted | [0024-silver-framework.md](0024-silver-framework.md) |
 | 0025 | Silver Glue job: packaging, deployment, permissions | Accepted | [0025-silver-glue-job.md](0025-silver-glue-job.md) |
 | 0026 | dbt Gold on Athena: versions, materialization, deletes, runner | Accepted | [0026-dbt-gold.md](0026-dbt-gold.md) |
+| 0027 | CDC source (RDS PostgreSQL) and AWS DMS into Bronze | Accepted | [0027-cdc-source-and-dms.md](0027-cdc-source-and-dms.md) |
 
 Update the **ADR file** column as each ADR is written.

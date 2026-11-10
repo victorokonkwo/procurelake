@@ -1,0 +1,7 @@
+# Copy to backend.hcl (git-ignored). Values come from:
+#   terraform -chdir=infrastructure/bootstrap output -raw backend_hcl
+bucket       = "procurelake-tfstate-123456789012-ca-central-1"
+region       = "ca-central-1"
+encrypt      = true
+kms_key_id   = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+use_lockfile = true

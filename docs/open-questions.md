@@ -20,10 +20,10 @@ These are decisions the planning documents **do not make**. Agents and contribut
 13. **Partitioning strategy** for each Silver and Gold Iceberg table.
 
 ## Platform
-14. **Freshness objective for the C5 gate:** the plan's initial SLI target is 15 minutes for 95% of changes. Confirm it is the gate threshold.
-15. **Locking mechanism** to prevent overlapping writers per target table (for example, a DynamoDB conditional write). Not yet specified.
+14. ~~Freshness objective for the C5 gate~~ **Resolved (owner, 2026-11-10): 95% of source changes visible in Silver and Gold within 15 minutes** (ADR 0027).
+15. ~~Locking mechanism~~ **Resolved (owner, 2026-11-10): a per-table lease via a DynamoDB conditional write**, in the same table as the checkpoints. To be implemented with the apply engine (C3).
 16. **Where dbt runs:** a container (`jobs/containers/dbt_runner/`) on which compute service, triggered by Step Functions. *Until Week 6: locally as the data-engineer role (`make dbt-build`, ADR 0026).*
-17. **Networking:** VPC layout for RDS and DMS that avoids an unnecessary NAT gateway, and how Glue reaches the sources.
+17. ~~Networking~~ **Resolved: ADR 0027** (public RDS limited to the operator IP; DMS in private subnets with S3 gateway + Secrets Manager interface endpoints; no NAT).
 18. **Bedrock model choice** and Region availability in `ca-central-1` for that model. Also whether Textract features needed are available in `ca-central-1`.
 19. **Human review queue:** where it lives and how approvals are recorded.
 20. **BI / dashboard tool** for the tenant and admin dashboards.
@@ -41,6 +41,8 @@ These are decisions the planning documents **do not make**. Agents and contribut
 
 35. **Canonical supplier.** `dim_supplier` is one row per supplier registration within a tenant. Decide whether, and how, suppliers are matched across tenants or names (an entity-resolution policy) before any cross-tenant supplier reporting.
 36. **`gold_staging` database.** Staging is ephemeral (ADR 0026), so `procurelake_dev_gold_staging` is empty. Keep it for materialized intermediate models, or remove it (and its IAM grants) in the next foundation change.
+
+37. **RDS certificate verification.** The operator scripts connect with `sslmode=require` and do not verify the server certificate against the RDS CA bundle (ADR 0027). Decide whether to pin the bundle (`verify-full`).
 
 ## Naming inconsistencies between the source documents
 23. ~~Cycle-time mart name~~ **Resolved: ADR 0017** (`mart_procurement_cycle_time`).

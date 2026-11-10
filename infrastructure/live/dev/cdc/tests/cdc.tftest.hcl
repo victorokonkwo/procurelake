@@ -1,0 +1,68 @@
+mock_provider "aws" {
+  mock_data "aws_availability_zones" {
+    defaults = { names = ["ca-central-1a", "ca-central-1b"] }
+  }
+  mock_data "aws_partition" {
+    defaults = { partition = "aws" }
+  }
+  mock_resource "aws_db_instance" {
+    defaults = {
+      address            = "src.example.ca-central-1.rds.amazonaws.com"
+      port               = 5432
+      master_user_secret = [{ secret_arn = "arn:aws:secretsmanager:ca-central-1:123456789012:secret:rds!db-1", kms_key_id = "k", secret_status = "active" }]
+    }
+  }
+  mock_resource "aws_secretsmanager_secret" {
+    defaults = { arn = "arn:aws:secretsmanager:ca-central-1:123456789012:secret:replication-user" }
+  }
+  mock_resource "aws_iam_role" {
+    defaults = { arn = "arn:aws:iam::123456789012:role/procurelake-dev-cdc-x" }
+  }
+  mock_resource "aws_dms_replication_instance" {
+    defaults = { replication_instance_arn = "arn:aws:dms:ca-central-1:123456789012:rep:MOCK" }
+  }
+  mock_resource "aws_dms_endpoint" {
+    defaults = { endpoint_arn = "arn:aws:dms:ca-central-1:123456789012:endpoint:MOCKSRC" }
+  }
+  mock_resource "aws_dms_s3_endpoint" {
+    defaults = { endpoint_arn = "arn:aws:dms:ca-central-1:123456789012:endpoint:MOCKTGT" }
+  }
+}
+
+override_data {
+  target = data.terraform_remote_state.foundation
+  values = {
+    outputs = {
+      bucket_names     = { raw = "procurelake-dev-raw-123456789012-ca-central-1" }
+      data_kms_key_arn = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+    }
+  }
+}
+
+variables {
+  aws_account_id = "123456789012"
+  state_bucket   = "procurelake-tfstate-123456789012-ca-central-1"
+  operator_cidrs = ["203.0.113.7/32"]
+}
+
+run "phase_one_has_no_dms" {
+  command = apply
+
+  assert {
+    condition     = length(module.dms) == 0 && output.replication_task_arn == null
+    error_message = "DMS must not exist until the source is set up (enable_dms = true)."
+  }
+}
+
+run "phase_two_replicates_into_bronze" {
+  command = apply
+
+  variables {
+    enable_dms = true
+  }
+
+  assert {
+    condition     = startswith(output.bronze_cdc_prefix, "bronze/postgres_cdc/load_id=")
+    error_message = "DMS output must land in Bronze under a load_id prefix."
+  }
+}

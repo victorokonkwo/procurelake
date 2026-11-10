@@ -7,10 +7,13 @@ infrastructure/
 ├── bootstrap/                 # applied once by a human: budget, state bucket, GitHub OIDC roles
 ├── modules/                   # reusable building blocks (each has offline tests in tests/)
 │   ├── budgets/  kms/  s3_lakehouse/  iam/  glue_catalog/  athena/  glue_spark_job/
+│   ├── dms_account_roles/  cdc_network/  rds_postgresql/  dms_s3_cdc/
 └── live/dev/
     ├── foundation/            # data KMS key, 4 lakehouse buckets, workload roles,
     │                          #   Bronze/Silver/Gold Glue databases, engineering Athena workgroup
-    └── data_platform/         # Glue jobs (Bronze -> Silver), reading foundation's remote state
+    ├── data_platform/         # Glue jobs (Bronze -> Silver), reading foundation's remote state
+    └── cdc/                   # DISPOSABLE, hourly-billed: VPC, RDS PostgreSQL source, AWS DMS
+                               #   (destroy after each session: make cdc-down; ADR 0027)
 ```
 
 Other module and root directories from `docs/architecture/repository_structure.md` are added when their sprint starts.

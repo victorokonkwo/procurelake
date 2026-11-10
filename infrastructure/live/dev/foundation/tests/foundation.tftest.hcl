@@ -1,4 +1,7 @@
 mock_provider "aws" {
+  mock_data "aws_partition" {
+    defaults = { partition = "aws" }
+  }
   # Athena validates ARN syntax, so the mock KMS key needs a well-formed ARN.
   mock_resource "aws_kms_key" {
     defaults = {
