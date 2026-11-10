@@ -65,6 +65,10 @@ owner decided on 2026-11-10:
   - While CDC is up, the scheduled Glue runs (about $0.36/hour) dominate.
 - **Alerts:** no email is subscribed to the SNS topic unless `alert_email` is set (git-ignored
   tfvars).
-- **Still to do for the Week 6 gate:** a CDC session with the schedule running. Measure
-  scheduled freshness, and drill a failure and a retry through `cdc_processing` (this also
-  covers the live-retry part of C5).
+- **Live, 2026-11-10:**
+  - Scheduled freshness p95 was 338.5 s to Silver and 459.4 s to Gold.
+  - Overlap skips were observed.
+  - The failure drill passed: lease held, retry, SNS alert and `Fail`, then recovery with 0
+    mismatches.
+  - A race was found in review and fixed before going live: a load is deferred until DMS
+    reports its full load complete.

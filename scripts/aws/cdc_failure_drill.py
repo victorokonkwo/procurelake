@@ -38,11 +38,21 @@ def _executions(sfn, arn: str, since: datetime) -> list[dict]:
     )
 
 
+def _ran_apply(sfn, execution_arn: str) -> bool:
+    """True unless the execution only counted executions and skipped (an overlap skip)."""
+    events = sfn.get_execution_history(executionArn=execution_arn, maxResults=200)["events"]
+    return any(
+        e["type"] == "TaskStateExited" and e["stateExitedEventDetails"]["name"] == "ApplyCdc" for e in events
+    )
+
+
 def _wait_for(sfn, arn, since, status, timeout_s, poll_s=20) -> dict:
+    # Only executions that ran the CDC apply count: a 5-minute tick that finds another
+    # execution running succeeds immediately without doing anything (live drill, 2026-11-10).
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         for e in _executions(sfn, arn, since):
-            if e["status"] == status:
+            if e["status"] == status and _ran_apply(sfn, e["executionArn"]):
                 return e
         time.sleep(poll_s)
     raise TimeoutError(f"no {status} execution of {arn} since {since.isoformat()} within {timeout_s}s")
@@ -89,7 +99,9 @@ def main(argv: list[str] | None = None) -> int:
     task_failures = sum(1 for e in history if e["type"] == "TaskFailed")
     notified = any(e["type"] == "TaskSucceeded" and "sns" in json.dumps(e, default=str) for e in history)
 
-    recovered = _wait_for(sfn, args.state_machine_arn, released_at, "SUCCEEDED", 1200)
+    # The recovery can start before the lease expires (it reaches silver_invoices later), so
+    # look for the first applying success that started after the failed execution did.
+    recovered = _wait_for(sfn, args.state_machine_arn, failed["startDate"], "SUCCEEDED", 1200)
     print(f"recovered by: {recovered['name']} at {recovered['startDate'].isoformat()}", flush=True)
     time.sleep(5)
     after = checkpoints.checkpoint("silver_invoices")
