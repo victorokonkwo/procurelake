@@ -85,3 +85,31 @@ run "rejects_invalid_account_id" {
   }
   expect_failures = [var.aws_account_id]
 }
+
+run "each_tenant_role_is_confined_to_its_products_prefix" {
+  command = apply
+
+  variables {
+    products_tenant_prefixes = {
+      tenant_alder = "arn:aws:iam::123456789012:role/procurelake-dev-tenant-alder"
+      tenant_birch = "arn:aws:iam::123456789012:role/procurelake-dev-tenant-birch"
+    }
+  }
+
+  assert {
+    condition = alltrue([for t, role in { tenant_alder = "procurelake-dev-tenant-alder", tenant_birch = "procurelake-dev-tenant-birch" } :
+      anytrue([for s in jsondecode(aws_s3_bucket_policy.this["products"].policy).Statement :
+        s.Effect == "Deny" && try(s.Condition.ArnEquals["aws:PrincipalArn"], "") == "arn:aws:iam::123456789012:role/${role}"
+    && anytrue([for r in try(s.NotResource, []) : endswith(r, "/${t}/*")])])])
+    error_message = "Each tenant role must be denied everything in products outside its own prefix."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_s3_bucket_policy.this["products"].policy).Statement :
+    s.Effect == "Deny" && contains(flatten([s.Action]), "s3:DeleteObjectVersion") && length(flatten([try(s.Condition.ArnEquals["aws:PrincipalArn"], [])])) == 2])
+    error_message = "Tenant roles must never delete exports."
+  }
+  assert {
+    condition     = length(jsondecode(aws_s3_bucket_policy.this["lake"].policy).Statement) == 1
+    error_message = "Only the products bucket gets tenant statements."
+  }
+}

@@ -45,3 +45,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "products_tenant_prefixes" {
+  description = "Tenant export prefixes in the products bucket, mapped to the only tenant role allowed to touch them. Every other tenant role is denied that prefix in the bucket policy (ADR 0030). Roles are named, not referenced, so this module does not depend on dev/security."
+  type        = map(string)
+  default     = {}
+}

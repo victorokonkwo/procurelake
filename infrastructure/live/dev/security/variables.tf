@@ -36,7 +36,13 @@ variable "tenants" {
 }
 
 variable "filtered_tables" {
-  description = "Gold tables exposed to tenants through Lake Formation row filters (experiment: one mart)."
+  description = "Gold tables exposed to tenants through Lake Formation row filters: the tenant-facing marts (ADR 0030). They are dbt merge models, never dropped, so their grants persist."
   type        = list(string)
-  default     = ["mart_awarded_value"]
+  default     = ["mart_awarded_value", "mart_actual_spend", "mart_procurement_cycle_time", "mart_supplier_concentration"]
+}
+
+variable "exports_schedule" {
+  description = "EventBridge Scheduler expression for the daily tenant exports (America/Toronto)."
+  type        = string
+  default     = "cron(0 6 * * ? *)"
 }

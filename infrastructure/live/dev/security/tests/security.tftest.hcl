@@ -2,6 +2,9 @@ mock_provider "aws" {
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::123456789012:role/procurelake-dev-tenant" }
   }
+  mock_resource "aws_sfn_state_machine" {
+    defaults = { arn = "arn:aws:states:ca-central-1:123456789012:stateMachine:procurelake-dev-tenant-exports" }
+  }
   mock_resource "aws_athena_workgroup" {
     defaults = { arn = "arn:aws:athena:ca-central-1:123456789012:workgroup/procurelake-dev-tenant" }
   }
@@ -19,6 +22,15 @@ override_data {
       }
       data_kms_key_arn   = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
       gold_database_name = "procurelake_dev_gold"
+    }
+  }
+}
+
+override_data {
+  target = data.terraform_remote_state.data_platform
+  values = {
+    outputs = {
+      pipeline_alerts_topic_arn = "arn:aws:sns:ca-central-1:123456789012:procurelake-dev-pipeline-alerts"
     }
   }
 }
@@ -78,7 +90,56 @@ run "each_tenant_sees_only_its_rows" {
     error_message = "Tenants get SELECT through their filter only, never with grant option."
   }
   assert {
-    condition     = length(aws_lakeformation_opt_in.tenant) == 2
+    condition     = alltrue([for o in aws_lakeformation_opt_in.tenant : contains([for r in aws_iam_role.tenant : r.arn], one(o.principal).data_lake_principal_identifier)])
     error_message = "Only the tenant roles are opted in (hybrid access mode)."
+  }
+}
+
+run "every_tenant_mart_is_filtered_per_tenant" {
+  command = plan
+
+  assert {
+    condition     = length(aws_lakeformation_data_cells_filter.tenant) == 8 && length(aws_lakeformation_opt_in.tenant) == 8 && length(aws_lakeformation_permissions.tenant_rows) == 8
+    error_message = "Each of the 4 marts needs a filter, a filtered SELECT grant and an opt-in for each of the 2 tenants."
+  }
+  assert {
+    condition     = alltrue([for k, f in aws_lakeformation_data_cells_filter.tenant : one(f.table_data).row_filter[0].filter_expression == "tenant_id = '${split("/", k)[0]}'"])
+    error_message = "Every filter must restrict rows to its own tenant_id."
+  }
+}
+
+run "admin_reads_every_mart_unfiltered_with_no_s3_path" {
+  command = apply
+
+  assert {
+    condition     = length(aws_lakeformation_permissions.admin_tables) == 4 && alltrue([for g in aws_lakeformation_permissions.admin_tables : toset(g.permissions) == toset(["SELECT"]) && length(g.permissions_with_grant_option) == 0])
+    error_message = "The admin gets SELECT (no grant option) on each tenant-facing mart."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_iam_role_policy.admin.policy).Statement :
+    s.Effect == "Deny" && s.Action == "s3:*" && contains(s.Resource, "arn:aws:s3:::procurelake-dev-lake-123456789012-ca-central-1/*")])
+    error_message = "The admin role must be denied direct S3 access to the lakehouse."
+  }
+}
+
+run "exports_run_as_each_tenant_into_its_own_prefix" {
+  command = apply
+
+  assert {
+    condition     = length(local.exports) == 8 && alltrue([for e in local.exports : contains(["tenant_alder", "tenant_birch"], e.tenant)])
+    error_message = "One export per tenant per mart."
+  }
+  assert {
+    condition     = strcontains(aws_sfn_state_machine.exports.definition, "\"Credentials\"") && strcontains(aws_sfn_state_machine.exports.definition, "procurelake-dev-products-123456789012-ca-central-1")
+    error_message = "Exports must run with the tenant role's credentials and write to the products bucket."
+  }
+  assert {
+    condition     = alltrue([for s in jsondecode(aws_iam_role_policy.exports.policy).Statement : s.Action != "s3:*" && !strcontains(jsonencode(s.Action), "s3:")])
+    error_message = "The export state machine itself has no S3 access; only the tenant roles write exports."
+  }
+  assert {
+    condition = alltrue([for t, p in aws_iam_role_policy.tenant : anytrue([for s in jsondecode(p.policy).Statement :
+    s.Sid == "WriteAndReadOwnExports" && s.Resource == "arn:aws:s3:::procurelake-dev-products-123456789012-ca-central-1/${t}/*"])])
+    error_message = "Each tenant role writes exports only under its own prefix."
   }
 }

@@ -132,6 +132,12 @@ orchestration-run: ## Start cdc_processing once by hand and wait (dev/cdc must b
 	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_processing_state_machine_arn) \
 	  --input "{\"dms_task_arn\": \"$$($(CDCOUT) -raw replication_task_arn)\"}"
 
+.PHONY: tenant-exports-run
+tenant-exports-run: ## Run the daily tenant Parquet exports once by hand and wait (ADR 0030)
+	uv run python scripts/aws/run_state_machine.py \
+	  $$(terraform -chdir=infrastructure/live/dev/security output -raw tenant_exports_state_machine_arn) \
+	  --name manual-$$(date -u +%Y%m%dT%H%M%SZ)
+
 .PHONY: silver-run
 silver-run: ## Run the Bronze->Silver Glue job on the latest complete snapshot batch and wait (BATCH= to pick one)
 	uv run python scripts/aws/run_glue_job.py \
@@ -276,6 +282,10 @@ test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evide
 	PROCURELAKE_DEV_SILVER_DATABASE=$$($(TFOUT) -raw silver_database_name) \
 	PROCURELAKE_DEV_GOLD_DATABASE=$$($(TFOUT) -raw gold_database_name) \
 	PROCURELAKE_DEV_CDC_CHECKPOINT_TABLE=$$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_checkpoint_table_name) \
+	PROCURELAKE_DEV_TENANT_ROLE_ARNS="$$(terraform -chdir=infrastructure/live/dev/security output -json tenant_role_arns)" \
+	PROCURELAKE_DEV_TENANT_WORKGROUPS="$$(terraform -chdir=infrastructure/live/dev/security output -json tenant_workgroups)" \
+	PROCURELAKE_DEV_ADMIN_ROLE_ARN=$$(terraform -chdir=infrastructure/live/dev/security output -raw admin_role_arn) \
+	PROCURELAKE_DEV_ADMIN_WORKGROUP=$$(terraform -chdir=infrastructure/live/dev/security output -raw admin_workgroup) \
 	uv run pytest -m aws -v --junitxml=build/test-results/aws-integration.xml tests/integration/aws
 
 .PHONY: test-unit

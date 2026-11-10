@@ -20,6 +20,11 @@ module "lakehouse" {
   aws_account_id = var.aws_account_id
   region         = var.region
   kms_key_arn    = module.data_key.key_arn
+
+  # Synthetic tenants' export prefixes (ADR 0030); roles are created in dev/security.
+  products_tenant_prefixes = {
+    for t in var.tenants : t => "arn:aws:iam::${var.aws_account_id}:role/${local.name_prefix}-${replace(t, "_", "-")}"
+  }
 }
 
 module "catalog" {

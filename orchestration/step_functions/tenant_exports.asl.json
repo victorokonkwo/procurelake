@@ -1,0 +1,102 @@
+{
+  "Comment": "Daily tenant exports (ADR 0030): for each synthetic tenant and tenant-facing mart, UNLOAD to Parquet in s3://<products>/<tenant>/<mart>/export_date=<date>/run=<execution>/ as the tenant's own role, so the Lake Formation row filter applies to the export. Then write _manifest.json, also as the tenant role. Any failure is published to SNS.",
+  "StartAt": "ListExports",
+  "States": {
+    "ListExports": {
+      "Type": "Pass",
+      "Parameters": {
+        "exports": ${exports_json},
+        "export_date.$": "States.ArrayGetItem(States.StringSplit($$.Execution.StartTime, 'T'), 0)",
+        "run.$": "$$.Execution.Name"
+      },
+      "Next": "ExportEach"
+    },
+    "ExportEach": {
+      "Type": "Map",
+      "ItemsPath": "$.exports",
+      "MaxConcurrency": 4,
+      "ItemSelector": {
+        "tenant.$": "$$.Map.Item.Value.tenant",
+        "role_arn.$": "$$.Map.Item.Value.role_arn",
+        "workgroup.$": "$$.Map.Item.Value.workgroup",
+        "mart.$": "$$.Map.Item.Value.mart",
+        "export_date.$": "$.export_date",
+        "run.$": "$.run",
+        "prefix.$": "States.Format('{}/{}/export_date={}/run={}/', $$.Map.Item.Value.tenant, $$.Map.Item.Value.mart, $.export_date, $.run)"
+      },
+      "ItemProcessor": {
+        "ProcessorConfig": { "Mode": "INLINE" },
+        "StartAt": "Unload",
+        "States": {
+          "Unload": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::athena:startQueryExecution.sync",
+            "Credentials": { "RoleArn.$": "$.role_arn" },
+            "Parameters": {
+              "QueryString.$": "States.Format('UNLOAD (SELECT * FROM ${gold_database}.{}) TO \\'s3://${products_bucket}/{}\\' WITH (format = \\'PARQUET\\', compression = \\'SNAPPY\\')', $.mart, $.prefix)",
+              "WorkGroup.$": "$.workgroup",
+              "QueryExecutionContext": { "Database": "${gold_database}" }
+            },
+            "ResultSelector": {
+              "query_execution_id.$": "$.QueryExecution.QueryExecutionId",
+              "data_scanned_bytes.$": "$.QueryExecution.Statistics.DataScannedInBytes",
+              "completed_at.$": "$.QueryExecution.Status.CompletionDateTime"
+            },
+            "ResultPath": "$.query",
+            "Retry": [
+              { "ErrorEquals": ["Athena.TooManyRequestsException"], "IntervalSeconds": 10, "MaxAttempts": 3, "BackoffRate": 2 }
+            ],
+            "Next": "BuildManifest"
+          },
+          "BuildManifest": {
+            "Type": "Pass",
+            "Parameters": {
+              "tenant.$": "$.tenant",
+              "source_table.$": "States.Format('${gold_database}.{}', $.mart)",
+              "export_date.$": "$.export_date",
+              "run.$": "$.run",
+              "format": "parquet (snappy)",
+              "access_scope": "Lake Formation row filter on tenant_id, applied because the export runs as the tenant role (synthetic tenant)",
+              "athena_query_execution_id.$": "$.query.query_execution_id",
+              "data_scanned_bytes.$": "$.query.data_scanned_bytes",
+              "query_completed_at.$": "$.query.completed_at"
+            },
+            "ResultPath": "$.manifest_doc",
+            "Next": "WriteManifest"
+          },
+          "WriteManifest": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:s3:putObject",
+            "Credentials": { "RoleArn.$": "$.role_arn" },
+            "Parameters": {
+              "Bucket": "${products_bucket}",
+              "Key.$": "States.Format('{}_manifest.json', $.prefix)",
+              "ContentType": "application/json",
+              "Body.$": "$.manifest_doc"
+            },
+            "ResultSelector": { "etag.$": "$.ETag" },
+            "ResultPath": "$.manifest",
+            "End": true
+          }
+        }
+      },
+      "ResultSelector": { "count.$": "States.ArrayLength($)" },
+      "ResultPath": "$.exported",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }],
+      "Next": "Succeeded"
+    },
+    "Succeeded": { "Type": "Succeed" },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${alerts_topic_arn}",
+        "Subject": "ProcureLake dev: tenant exports failed",
+        "Message.$": "States.Format('Execution {} failed. Error: {}', $$.Execution.Id, States.JsonToString($.error))"
+      },
+      "ResultPath": "$.notification",
+      "Next": "Failed"
+    },
+    "Failed": { "Type": "Fail", "Error": "TenantExportsFailed", "Cause": "See the execution history and the SNS notification." }
+  }
+}

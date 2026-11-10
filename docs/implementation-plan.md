@@ -126,12 +126,12 @@ Flow: PostgreSQL → AWS DMS (full load + CDC) → S3 Bronze CDC (Parquet + sour
 
 **D3. Completion gate**
 
-Progress (2026-11-10): the four checks below passed live for `mart_awarded_value`, including after a dbt rebuild (ADR 0030, `docs/evidence/sprint1-week7-lake-formation-experiment.md`). They stay unchecked until every tenant product is covered.
+Met on 2026-11-10 for the four tenant-facing marts and the daily exports (`make test-aws`, ADR 0030, `docs/evidence/sprint1-week7-tenant-products-live.md`). The dashboard (D2) is deferred by owner decision.
 
-- [ ] A query run as Alder returns only Alder records.
-- [ ] A query run as Birch returns only Birch records.
-- [ ] Unauthorized table access fails.
-- [ ] Unauthorized direct S3 access fails.
+- [x] A query run as Alder returns only Alder records.
+- [x] A query run as Birch returns only Birch records.
+- [x] Unauthorized table access fails.
+- [x] Unauthorized direct S3 access fails.
 
 ### Work package E: Reliability, observability, and governance (Week 8; controls introduced from Week 2)
 

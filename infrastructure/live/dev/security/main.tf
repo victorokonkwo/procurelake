@@ -18,6 +18,7 @@
 
 locals {
   foundation = data.terraform_remote_state.foundation.outputs
+  alerts_arn = data.terraform_remote_state.data_platform.outputs.pipeline_alerts_topic_arn
   lake_arn   = "arn:aws:s3:::${local.foundation.bucket_names["lake"]}"
   raw_arn    = "arn:aws:s3:::${local.foundation.bucket_names["raw"]}"
   art_arn    = "arn:aws:s3:::${local.foundation.bucket_names["artifacts"]}"
@@ -25,6 +26,15 @@ locals {
   gold_db    = local.foundation.gold_database_name
   glue       = "arn:aws:glue:${var.region}:${var.aws_account_id}"
   filters    = { for pair in setproduct(var.tenants, var.filtered_tables) : "${pair[0]}/${pair[1]}" => { tenant = pair[0], table = pair[1] } }
+}
+
+data "terraform_remote_state" "data_platform" {
+  backend = "s3"
+  config = {
+    bucket = var.state_bucket
+    key    = "dev/data_platform/terraform.tfstate"
+    region = var.region
+  }
 }
 
 data "terraform_remote_state" "foundation" {
@@ -189,7 +199,23 @@ resource "aws_iam_role_policy" "tenant" {
         Sid      = "LocateResultsBucket"
         Effect   = "Allow"
         Action   = "s3:GetBucketLocation"
-        Resource = local.art_arn
+        Resource = [local.art_arn, local.prod_arn]
+      },
+      {
+        # Daily exports (tenant_exports state machine) run UNLOAD as this role, so the export
+        # gets the same row filter as the tenant's queries. The products bucket policy denies
+        # every other prefix and all deletes to this role (foundation, ADR 0030).
+        Sid      = "WriteAndReadOwnExports"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"]
+        Resource = "${local.prod_arn}/${each.value}/*"
+      },
+      {
+        Sid       = "ListOwnExports"
+        Effect    = "Allow"
+        Action    = ["s3:ListBucket", "s3:ListBucketMultipartUploads"]
+        Resource  = local.prod_arn
+        Condition = { StringLike = { "s3:prefix" = ["${each.value}/*"] } }
       },
       {
         Sid      = "EncryptQueryResults"
@@ -282,4 +308,235 @@ resource "aws_lakeformation_opt_in" "tenant" {
     }
   }
   depends_on = [aws_lakeformation_permissions.tenant_rows]
+}
+
+# ----------------------------------------------------------------------------- admin product
+# Internal cross-tenant analytics for authorised administrators (work package D2): the same
+# marts, every tenant's rows, through Lake Formation (SELECT on the table, no filter). Like the
+# tenants, no direct S3 path to the lakehouse and a dedicated Athena workgroup.
+module "admin_workgroup" {
+  source = "../../../modules/athena"
+
+  name                = "procurelake-dev-analytics-admin"
+  description         = "Athena workgroup for cross-tenant analytics administrators (results encrypted, 1 GiB cutoff)."
+  results_bucket_name = local.foundation.bucket_names["artifacts"]
+  kms_key_arn         = local.foundation.data_kms_key_arn
+}
+
+resource "aws_iam_role" "admin" {
+  name        = "procurelake-dev-analytics-admin"
+  description = "Cross-tenant analytics administrator: tenant-facing Gold marts, all tenants, through Lake Formation only."
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "admin" {
+  name = "admin-query"
+  role = aws_iam_role.admin.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "QueryInOwnWorkgroup"
+        Effect = "Allow"
+        Action = [
+          "athena:StartQueryExecution", "athena:StopQueryExecution", "athena:GetQueryExecution",
+          "athena:GetQueryResults", "athena:GetWorkGroup",
+        ]
+        Resource = module.admin_workgroup.workgroup_arn
+      },
+      {
+        Sid      = "ReadGoldCatalog"
+        Effect   = "Allow"
+        Action   = ["glue:GetDatabase", "glue:GetDatabases", "glue:GetTable", "glue:GetTables", "glue:GetPartitions"]
+        Resource = ["${local.glue}:catalog", "${local.glue}:database/${local.gold_db}", "${local.glue}:table/${local.gold_db}/*"]
+      },
+      {
+        Sid      = "LakeFormationDataAccess"
+        Effect   = "Allow"
+        Action   = ["lakeformation:GetDataAccess"]
+        Resource = "*"
+      },
+      {
+        Sid      = "OwnQueryResults"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"]
+        Resource = "${local.art_arn}/athena_results/procurelake-dev-analytics-admin/*"
+      },
+      {
+        Sid       = "ListOwnQueryResults"
+        Effect    = "Allow"
+        Action    = ["s3:ListBucket", "s3:ListBucketMultipartUploads"]
+        Resource  = local.art_arn
+        Condition = { StringLike = { "s3:prefix" = ["athena_results/procurelake-dev-analytics-admin/*"] } }
+      },
+      {
+        Sid      = "LocateResultsBucket"
+        Effect   = "Allow"
+        Action   = "s3:GetBucketLocation"
+        Resource = local.art_arn
+      },
+      {
+        Sid      = "EncryptQueryResults"
+        Effect   = "Allow"
+        Action   = ["kms:GenerateDataKey", "kms:Decrypt", "kms:Encrypt"]
+        Resource = local.foundation.data_kms_key_arn
+      },
+      {
+        Sid      = "DenyDirectLakehouseAccess"
+        Effect   = "Deny"
+        Action   = "s3:*"
+        Resource = [local.lake_arn, "${local.lake_arn}/*", local.raw_arn, "${local.raw_arn}/*"]
+      },
+    ]
+  })
+}
+
+resource "aws_lakeformation_permissions" "admin_database" {
+  principal   = aws_iam_role.admin.arn
+  permissions = ["DESCRIBE"]
+  database {
+    name = local.gold_db
+  }
+  depends_on = [aws_lakeformation_data_lake_settings.this]
+
+  lifecycle {
+    ignore_changes = [permissions] # same provider read quirk as tenant_database
+  }
+}
+
+resource "aws_lakeformation_permissions" "admin_tables" {
+  for_each = toset(var.filtered_tables)
+
+  principal                     = aws_iam_role.admin.arn
+  permissions                   = ["SELECT"]
+  permissions_with_grant_option = []
+  table {
+    database_name = local.gold_db
+    name          = each.value
+  }
+  depends_on = [aws_lakeformation_data_lake_settings.this]
+
+  # Same provider read quirk as tenant_database: the principal-filtered ListPermissions adds
+  # ALL (from IAM_ALLOWED_PRINCIPALS on the table); the unfiltered listing shows SELECT only
+  # (checked live, 2026-11-10).
+  lifecycle {
+    ignore_changes = [permissions]
+  }
+}
+
+resource "aws_lakeformation_opt_in" "admin" {
+  for_each = toset(var.filtered_tables)
+
+  principal {
+    data_lake_principal_identifier = aws_iam_role.admin.arn
+  }
+  resource_data {
+    table {
+      catalog_id    = var.aws_account_id
+      database_name = local.gold_db
+      name          = each.value
+    }
+  }
+  depends_on = [aws_lakeformation_permissions.admin_tables, aws_lakeformation_opt_in.tenant]
+}
+
+# ----------------------------------------------------------------------------- daily exports
+# tenant_exports (orchestration/step_functions/tenant_exports.asl.json): each export task runs
+# with the tenant role's credentials (Task `Credentials`), so this role only assumes them.
+locals {
+  exports_machine = "procurelake-dev-tenant-exports"
+  exports = [for k, f in local.filters : {
+    tenant    = f.tenant
+    mart      = f.table
+    role_arn  = aws_iam_role.tenant[f.tenant].arn
+    workgroup = module.tenant_workgroup[f.tenant].workgroup_name
+  }]
+}
+
+resource "aws_iam_role" "exports" {
+  name = "${local.exports_machine}-sfn"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "states.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "exports" {
+  name = "run-tenant-exports"
+  role = aws_iam_role.exports.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Sid = "ActAsTenants", Effect = "Allow", Action = "sts:AssumeRole", Resource = [for r in aws_iam_role.tenant : r.arn] },
+      { Sid = "Alert", Effect = "Allow", Action = "sns:Publish", Resource = local.alerts_arn },
+    ]
+  })
+}
+
+resource "aws_sfn_state_machine" "exports" {
+  name     = local.exports_machine
+  role_arn = aws_iam_role.exports.arn
+  definition = templatefile("${path.module}/../../../../orchestration/step_functions/tenant_exports.asl.json", {
+    exports_json     = jsonencode(local.exports)
+    gold_database    = local.gold_db
+    products_bucket  = local.foundation.bucket_names["products"]
+    alerts_topic_arn = local.alerts_arn
+  })
+  depends_on = [aws_iam_role_policy.exports]
+}
+
+resource "aws_iam_role" "exports_scheduler" {
+  name = "${local.exports_machine}-scheduler"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "scheduler.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = var.aws_account_id
+          "aws:SourceArn"     = "arn:aws:scheduler:${var.region}:${var.aws_account_id}:schedule-group/default"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "exports_scheduler" {
+  name = "start-tenant-exports"
+  role = aws_iam_role.exports_scheduler.id
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [{ Effect = "Allow", Action = "states:StartExecution", Resource = aws_sfn_state_machine.exports.arn }]
+  })
+}
+
+resource "aws_scheduler_schedule" "exports" {
+  name                         = local.exports_machine
+  description                  = "Daily tenant Parquet exports (owner decision, 2026-11-10)."
+  schedule_expression          = var.exports_schedule
+  schedule_expression_timezone = "America/Toronto"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_sfn_state_machine.exports.arn
+    role_arn = aws_iam_role.exports_scheduler.arn
+    input    = jsonencode({})
+  }
 }

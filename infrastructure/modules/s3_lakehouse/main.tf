@@ -94,7 +94,7 @@ resource "aws_s3_bucket_policy" "this" {
   bucket = each.value.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Sid       = "DenyInsecureTransport"
         Effect    = "Deny"
@@ -103,7 +103,27 @@ resource "aws_s3_bucket_policy" "this" {
         Resource  = [each.value.arn, "${each.value.arn}/*"]
         Condition = { Bool = { "aws:SecureTransport" = "false" } }
       },
-    ]
+      ], each.key != "products" ? [] : [
+      # Each tenant role may touch only objects under its own prefix, whatever its IAM policy
+      # says; and no tenant role may delete or rewrite object versions (exports are evidence).
+      for prefix, role in var.products_tenant_prefixes : {
+        Sid         = "TenantOnlyOwnPrefix${replace(title(replace(prefix, "_", " ")), " ", "")}"
+        Effect      = "Deny"
+        Principal   = "*"
+        Action      = "s3:*"
+        NotResource = [each.value.arn, "${each.value.arn}/${prefix}/*"]
+        Condition   = { ArnEquals = { "aws:PrincipalArn" = role } }
+      }
+      ], each.key != "products" || length(var.products_tenant_prefixes) == 0 ? [] : [
+      {
+        Sid       = "TenantsNeverDelete"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = ["s3:DeleteObject", "s3:DeleteObjectVersion", "s3:PutLifecycleConfiguration", "s3:PutBucketPolicy"]
+        Resource  = [each.value.arn, "${each.value.arn}/*"]
+        Condition = { ArnEquals = { "aws:PrincipalArn" = values(var.products_tenant_prefixes) } }
+      },
+    ])
   })
 
   depends_on = [aws_s3_bucket_public_access_block.this]

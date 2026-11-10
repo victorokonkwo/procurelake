@@ -13,3 +13,9 @@ variable "region" {
   type        = string
   default     = "ca-central-1"
 }
+
+variable "tenants" {
+  description = "Synthetic tenants (fictional, not SOVRA customers); must match dev/security."
+  type        = list(string)
+  default     = ["tenant_alder", "tenant_birch"]
+}
