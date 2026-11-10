@@ -98,3 +98,11 @@ def test_same_state_and_seed_give_the_same_changes(seeded):
     strip = lambda r: [(c.operation, c.table, c.kind, c.key) for c in r.changes]  # noqa: E731
     assert strip(first) == strip(second)
     assert strip(first) != strip(_run(seeded(), seed=8))
+
+
+def test_a_second_run_with_the_same_seed_does_not_collide(seeded):
+    # Regression: new keys came from the seeded RNG alone, so rerunning a seed inserted duplicates.
+    dsn = seeded()
+    first, second = _run(dsn, seed=11, n=40), _run(dsn, seed=11, n=40)
+    inserted = [c.key for c in first.changes + second.changes if c.kind == "I"]
+    assert len(inserted) == len(set(inserted)) > 0

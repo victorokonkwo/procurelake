@@ -42,6 +42,7 @@ OPERATIONS = (
     "rename_supplier",
     "settle_purchase_order",
 )
+_WORKLOAD_NAMESPACE = uuid.UUID("6f1c2d4e-0b7a-5c39-9e21-3a4b5c6d7e8f")
 # Relative frequencies: payments and new invoices dominate, as in a real payables flow.
 WEIGHTS = (6, 2, 1, 1, 4, 1, 1, 2)
 
@@ -134,6 +135,16 @@ def _apply(cur, rng: random.Random, operation: str) -> list[tuple[str, str, str,
         po = _pick(cur, rng, "SELECT * FROM procurement.purchase_orders WHERE status = 'open' ORDER BY po_id")
         share = Decimal(rng.randint(5, 30)) / Decimal(100)
         amount = max(Decimal("0.01"), (po["amount"] * share).quantize(Decimal("0.01"), rounding=ROUND_DOWN))
+        # The new key depends on the seeded RNG *and* the current database state: the same state
+        # and seed give the same key, but a second run on changed data cannot collide with keys
+        # an earlier run inserted (it did, live, on 2026-11-10).
+        state = cur.execute(
+            # Time-free state (created_at would make two identical databases diverge).
+            "SELECT count(*) AS n, coalesce(max(invoice_id::text), '') AS last FROM procurement.invoices"
+        ).fetchone()
+        invoice_id = uuid.uuid5(
+            _WORKLOAD_NAMESPACE, f"{rng.getrandbits(128)}:{po['po_id']}:{state['n']}:{state['last']}"
+        )
         row = cur.execute(
             """
             INSERT INTO procurement.invoices
@@ -143,7 +154,7 @@ def _apply(cur, rng: random.Random, operation: str) -> list[tuple[str, str, str,
             RETURNING *
             """,
             (
-                uuid.UUID(int=rng.getrandbits(128), version=4),
+                invoice_id,
                 po["tenant_id"],
                 po["po_id"],
                 amount,
