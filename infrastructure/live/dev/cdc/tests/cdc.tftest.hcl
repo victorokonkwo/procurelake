@@ -15,6 +15,9 @@ mock_provider "aws" {
   mock_resource "aws_secretsmanager_secret" {
     defaults = { arn = "arn:aws:secretsmanager:ca-central-1:123456789012:secret:replication-user" }
   }
+  mock_resource "aws_scheduler_schedule" {
+    defaults = { arn = "arn:aws:scheduler:ca-central-1:123456789012:schedule/default/procurelake-dev-cdc-processing" }
+  }
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::123456789012:role/procurelake-dev-cdc-x" }
   }
@@ -39,6 +42,15 @@ override_data {
   }
 }
 
+override_data {
+  target = data.terraform_remote_state.data_platform
+  values = {
+    outputs = {
+      cdc_processing_state_machine_arn = "arn:aws:states:ca-central-1:123456789012:stateMachine:procurelake-dev-cdc-processing"
+    }
+  }
+}
+
 variables {
   aws_account_id = "123456789012"
   state_bucket   = "procurelake-tfstate-123456789012-ca-central-1"
@@ -52,6 +64,10 @@ run "phase_one_has_no_dms" {
     condition     = length(module.dms) == 0 && output.replication_task_arn == null
     error_message = "DMS must not exist until the source is set up (enable_dms = true)."
   }
+  assert {
+    condition     = output.cdc_schedule_name == null
+    error_message = "No schedule without DMS."
+  }
 }
 
 run "phase_two_replicates_into_bronze" {
@@ -64,5 +80,13 @@ run "phase_two_replicates_into_bronze" {
   assert {
     condition     = startswith(output.bronze_cdc_prefix, "bronze/postgres_cdc/load_id=")
     error_message = "DMS output must land in Bronze under a load_id prefix."
+  }
+  assert {
+    condition     = aws_scheduler_schedule.cdc_processing[0].schedule_expression == "rate(5 minutes)" && aws_scheduler_schedule.cdc_processing[0].flexible_time_window[0].mode == "OFF"
+    error_message = "cdc_processing runs every 5 minutes while CDC is up."
+  }
+  assert {
+    condition     = jsondecode(aws_iam_role_policy.scheduler[0].policy).Statement[0].Resource == "arn:aws:states:ca-central-1:123456789012:stateMachine:procurelake-dev-cdc-processing"
+    error_message = "The scheduler may start only cdc_processing."
   }
 }

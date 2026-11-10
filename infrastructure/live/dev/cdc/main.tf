@@ -8,8 +8,19 @@
 #   2. enable_dms = true: replication instance, endpoints and the full-load-and-CDC task.
 
 locals {
-  name       = "procurelake-dev-cdc"
-  foundation = data.terraform_remote_state.foundation.outputs
+  name          = "procurelake-dev-cdc"
+  foundation    = data.terraform_remote_state.foundation.outputs
+  cdc_machine   = try(data.terraform_remote_state.data_platform.outputs.cdc_processing_state_machine_arn, null)
+  with_schedule = var.enable_dms && local.cdc_machine != null
+}
+
+data "terraform_remote_state" "data_platform" {
+  backend = "s3"
+  config = {
+    bucket = var.state_bucket
+    key    = "dev/data_platform/terraform.tfstate"
+    region = var.region
+  }
 }
 
 data "terraform_remote_state" "foundation" {
@@ -51,4 +62,57 @@ module "dms" {
   database_name          = module.source.database_name
   raw_bucket_name        = local.foundation.bucket_names["raw"]
   kms_key_arn            = local.foundation.data_kms_key_arn
+}
+
+# ----------------------------------------------------------------------------- schedule
+# Start cdc_processing every 5 minutes while this stack (and DMS) exists (ADR 0029, owner
+# decision). Destroyed with the stack, so nothing runs when CDC is down.
+resource "aws_iam_role" "scheduler" {
+  count = local.with_schedule ? 1 : 0
+
+  name = "${local.name}-scheduler"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "scheduler.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      # Confused-deputy guard (EventBridge Scheduler docs): this account, the default group.
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = var.aws_account_id
+          "aws:SourceArn"     = "arn:aws:scheduler:${var.region}:${var.aws_account_id}:schedule-group/default"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "scheduler" {
+  count = local.with_schedule ? 1 : 0
+
+  name = "start-cdc-processing"
+  role = aws_iam_role.scheduler[0].id
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [{ Effect = "Allow", Action = "states:StartExecution", Resource = local.cdc_machine }]
+  })
+}
+
+resource "aws_scheduler_schedule" "cdc_processing" {
+  count = local.with_schedule ? 1 : 0
+
+  name                = "${local.name}-processing"
+  description         = "Start CDC processing (CDC apply -> dbt) every 5 minutes while dev/cdc is up."
+  schedule_expression = "rate(5 minutes)"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = local.cdc_machine
+    role_arn = aws_iam_role.scheduler[0].arn
+    input    = jsonencode({ dms_task_arn = module.dms[0].replication_task_arn })
+  }
 }

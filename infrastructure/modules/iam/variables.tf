@@ -63,3 +63,9 @@ variable "glue_writable_database_names" {
   type        = list(string)
   default     = []
 }
+
+variable "data_engineer_service_principals" {
+  description = "Extra service principals that may assume the data engineer role only (e.g. ecs-tasks.amazonaws.com)."
+  type        = list(string)
+  default     = []
+}

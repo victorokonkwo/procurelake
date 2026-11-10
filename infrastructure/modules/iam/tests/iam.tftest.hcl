@@ -164,3 +164,24 @@ run "no_build_policy_without_writable_databases" {
     error_message = "Build policy must not exist when no writable databases are given."
   }
 }
+
+run "only_the_data_engineer_trusts_ecs_tasks" {
+  command = apply
+
+  variables {
+    data_engineer_service_principals = ["ecs-tasks.amazonaws.com"]
+  }
+
+  assert {
+    condition     = contains(flatten([for st in jsondecode(aws_iam_role.data_engineer.assume_role_policy).Statement : flatten([try(st.Principal.Service, [])])]), "ecs-tasks.amazonaws.com")
+    error_message = "The data engineer must be assumable by ECS tasks (dbt runner)."
+  }
+  assert {
+    condition     = !contains(flatten([for st in jsondecode(aws_iam_role.ingestion.assume_role_policy).Statement : flatten([try(st.Principal.Service, [])])]), "ecs-tasks.amazonaws.com")
+    error_message = "The ingestion role must not trust ECS tasks."
+  }
+  assert {
+    condition     = alltrue([for st in jsondecode(aws_iam_role.data_engineer.assume_role_policy).Statement : !can(st.Principal.Service) || st.Condition.StringEquals["aws:SourceAccount"] == "123456789012"])
+    error_message = "Service trust must be limited to this account."
+  }
+}

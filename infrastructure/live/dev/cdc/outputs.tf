@@ -32,3 +32,8 @@ output "bronze_cdc_prefix" {
   description = "Bronze prefix of this stack instance's DMS output (null until enable_dms = true)."
   value       = var.enable_dms ? module.dms[0].bronze_cdc_prefix : null
 }
+
+output "cdc_schedule_name" {
+  description = "EventBridge Scheduler schedule starting cdc_processing (null when not scheduled)."
+  value       = local.with_schedule ? aws_scheduler_schedule.cdc_processing[0].name : null
+}

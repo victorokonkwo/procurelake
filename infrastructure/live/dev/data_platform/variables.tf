@@ -24,3 +24,15 @@ variable "dist_dir" {
   type        = string
   default     = "../../../../dist"
 }
+
+variable "dbt_image_digest" {
+  description = "Digest of the dbt runner image in ECR (make dbt-image). Empty until the first push."
+  type        = string
+  default     = ""
+}
+
+variable "alert_email" {
+  description = "Optional email subscribed to pipeline failure alerts (git-ignored tfvars)."
+  type        = string
+  default     = ""
+}

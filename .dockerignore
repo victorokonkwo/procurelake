@@ -1,0 +1,11 @@
+# Build context for jobs/containers/*: only what the images copy.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!dbt/
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+dbt/.user.yml
+!jobs/containers/

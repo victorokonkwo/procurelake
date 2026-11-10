@@ -22,3 +22,23 @@ output "cdc_checkpoint_table_name" {
   description = "DynamoDB table with CDC leases and checkpoints."
   value       = aws_dynamodb_table.cdc_checkpoints.name
 }
+
+output "dbt_runner_repository_url" {
+  description = "ECR repository for the dbt runner image."
+  value       = module.dbt_runner.repository_url
+}
+
+output "cdc_processing_state_machine_arn" {
+  description = "Step Functions state machine for CDC processing (null until the dbt image exists)."
+  value       = local.orchestrated ? aws_sfn_state_machine.cdc_processing[0].arn : null
+}
+
+output "dbt_transformation_state_machine_arn" {
+  description = "Step Functions state machine for dbt (null until the dbt image exists)."
+  value       = local.orchestrated ? aws_sfn_state_machine.dbt_transformation[0].arn : null
+}
+
+output "pipeline_alerts_topic_arn" {
+  description = "SNS topic for pipeline failure alerts."
+  value       = aws_sns_topic.pipeline_alerts.arn
+}

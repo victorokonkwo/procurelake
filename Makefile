@@ -74,6 +74,7 @@ TF_DIRS := infrastructure/modules/kms infrastructure/modules/budgets infrastruct
            infrastructure/modules/glue_spark_job infrastructure/modules/dms_account_roles \
            infrastructure/modules/cdc_network infrastructure/modules/rds_postgresql \
            infrastructure/modules/dms_s3_cdc infrastructure/live/dev/cdc \
+           infrastructure/modules/public_network infrastructure/modules/dbt_runner \
            infrastructure/bootstrap infrastructure/live/dev/foundation infrastructure/live/dev/data_platform
 
 .PHONY: tf-fmt
@@ -103,10 +104,32 @@ glue-wheel: ## Build the procurelake wheel deployed to Glue (reproducible; dist/
 	rm -rf dist
 	uv build --wheel --out-dir dist
 
+DBT_DIGEST_FILE := build/dbt_runner.digest
+
 .PHONY: dev-data-platform-plan
-dev-data-platform-plan: glue-wheel ## Plan dev/data_platform (Glue jobs; needs AWS creds, backend.hcl, terraform.tfvars)
+dev-data-platform-plan: glue-wheel ## Plan dev/data_platform (Glue jobs, orchestration; uses build/dbt_runner.digest if present)
 	terraform -chdir=infrastructure/live/dev/data_platform init -input=false -backend-config=backend.hcl
-	terraform -chdir=infrastructure/live/dev/data_platform plan -input=false -out=data_platform.tfplan
+	terraform -chdir=infrastructure/live/dev/data_platform plan -input=false -out=data_platform.tfplan \
+	  -var dbt_image_digest=$$(cat $(DBT_DIGEST_FILE) 2>/dev/null)
+
+.PHONY: dbt-image
+dbt-image: ## Build the dbt runner image (ARM64), push it to ECR, record its digest in build/dbt_runner.digest
+	@REPO=$$(terraform -chdir=infrastructure/live/dev/data_platform output -raw dbt_runner_repository_url) && \
+	  REGISTRY=$${REPO%%/*} && \
+	  docker build --platform linux/arm64 -f jobs/containers/dbt_runner/Dockerfile -t procurelake-dbt-runner:local . && \
+	  TAG=img-$$(docker image inspect procurelake-dbt-runner:local --format '{{.Id}}' | cut -c8-19) && \
+	  aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $$REGISTRY && \
+	  docker tag procurelake-dbt-runner:local $$REPO:$$TAG && \
+	  docker push $$REPO:$$TAG && \
+	  mkdir -p build && \
+	  docker image inspect $$REPO:$$TAG --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep "^$$REPO@" | head -1 | cut -d@ -f2 > $(DBT_DIGEST_FILE) && \
+	  echo "pushed $$REPO:$$TAG digest $$(cat $(DBT_DIGEST_FILE))"
+
+.PHONY: orchestration-run
+orchestration-run: ## Start cdc_processing once by hand and wait (dev/cdc must be up)
+	uv run python scripts/aws/run_state_machine.py \
+	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_processing_state_machine_arn) \
+	  --input "{\"dms_task_arn\": \"$$($(CDCOUT) -raw replication_task_arn)\"}"
 
 .PHONY: silver-run
 silver-run: ## Run the Bronze->Silver Glue job on the latest complete snapshot batch and wait (BATCH= to pick one)

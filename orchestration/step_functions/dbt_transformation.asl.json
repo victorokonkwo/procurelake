@@ -1,0 +1,68 @@
+{
+  "Comment": "Run dbt build in the dbt runner container on ECS Fargate (ADR 0029). Input: {\"run_id\": \"...\"}. Fails unless the container exits 0.",
+  "StartAt": "RunDbt",
+  "States": {
+    "RunDbt": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "Cluster": "${cluster_arn}",
+        "TaskDefinition": "${task_definition_arn}",
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["${subnet_a}", "${subnet_b}"],
+            "SecurityGroups": ["${security_group_id}"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "dbt",
+              "Environment": [
+                { "Name": "PROCURELAKE_RUN_ID", "Value.$": "$.run_id" }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultSelector": {
+        "TaskArn.$": "$.TaskArn",
+        "StopCode.$": "$.StopCode",
+        "Containers.$": "$.Containers"
+      },
+      "ResultPath": "$.dbt",
+      "Retry": [
+        {
+          "Comment": "Capacity or API errors before dbt ran. A dbt failure is not retried.",
+          "ErrorEquals": ["ECS.AmazonECSException", "AmazonECS.Unknown"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "CheckExitCode"
+    },
+    "CheckExitCode": {
+      "Comment": "Do not rely on the integration failing on a non-zero exit: check it.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            { "Variable": "$.dbt.Containers[0].ExitCode", "IsPresent": true },
+            { "Variable": "$.dbt.Containers[0].ExitCode", "NumericEquals": 0 }
+          ],
+          "Next": "Succeeded"
+        }
+      ],
+      "Default": "DbtFailed"
+    },
+    "Succeeded": { "Type": "Succeed" },
+    "DbtFailed": {
+      "Type": "Fail",
+      "Error": "DbtFailed",
+      "Cause": "The dbt runner container did not exit 0 (see its CloudWatch log stream and dbt/runs/<run id>/ in the artifacts bucket)."
+    }
+  }
+}

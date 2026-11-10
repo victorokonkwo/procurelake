@@ -65,6 +65,8 @@ module "iam" {
     module.catalog.gold_staging_database_name,
   ]
   glue_writable_database_names = [module.catalog.gold_database_name, module.catalog.gold_staging_database_name]
+  # The dbt runner (ECS Fargate, ADR 0029) runs as the data engineer, like `make dbt-build`.
+  data_engineer_service_principals = ["ecs-tasks.amazonaws.com"]
 }
 
 # Roles AWS DMS requires by exact name (CDC, ADR 0027). Free; kept here so the disposable

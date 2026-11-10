@@ -290,3 +290,166 @@ module "apply_cdc" {
     "--region"           = var.region
   }
 }
+
+# ----------------------------------------------------------------------------- orchestration
+# Step Functions for CDC processing and dbt transformation (ADR 0006, ADR 0029). The schedule
+# that starts cdc_processing lives in dev/cdc, so it exists only while CDC is up.
+module "orchestration_network" {
+  source = "../../../modules/public_network"
+
+  name = "${local.name_prefix}-orchestration"
+}
+
+module "dbt_runner" {
+  source = "../../../modules/dbt_runner"
+
+  name           = "${local.name_prefix}-dbt-runner"
+  aws_account_id = var.aws_account_id
+  region         = var.region
+  vpc_id         = module.orchestration_network.vpc_id
+  kms_key_arn    = local.foundation.data_kms_key_arn
+  task_role_arn  = local.foundation.data_engineer_role_arn
+  image_digest   = var.dbt_image_digest
+
+  environment = {
+    AWS_REGION                     = var.region
+    PROCURELAKE_DBT_S3_STAGING_DIR = "s3://${local.buckets["artifacts"]}/athena_results/"
+    PROCURELAKE_DBT_S3_DATA_DIR    = "s3://${local.buckets["lake"]}/gold/"
+    PROCURELAKE_GOLD_SCHEMA        = local.foundation.gold_database_name
+    PROCURELAKE_SILVER_SCHEMA      = local.silver_db
+    PROCURELAKE_ATHENA_WORKGROUP   = local.foundation.athena_workgroup_name
+    PROCURELAKE_ARTIFACTS_BUCKET   = local.buckets["artifacts"]
+  }
+}
+
+resource "aws_sns_topic" "pipeline_alerts" {
+  name              = "${local.name_prefix}-pipeline-alerts"
+  kms_master_key_id = local.foundation.data_kms_key_arn
+}
+
+resource "aws_sns_topic_subscription" "pipeline_alerts_email" {
+  count = var.alert_email == "" ? 0 : 1
+
+  topic_arn = aws_sns_topic.pipeline_alerts.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+locals {
+  sfn_trust = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "states.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
+    }]
+  })
+  sfn_prefix      = "arn:aws:states:${var.region}:${var.aws_account_id}"
+  dbt_machine     = "${local.name_prefix}-dbt-transformation"
+  cdc_machine     = "${local.name_prefix}-cdc-processing"
+  orchestrated    = var.dbt_image_digest != ""
+  events_rule_arn = "arn:aws:events:${var.region}:${var.aws_account_id}:rule"
+}
+
+# dbt_transformation: run the dbt runner task and check its exit code.
+resource "aws_iam_role" "dbt_transformation" {
+  name               = local.dbt_machine
+  assume_role_policy = local.sfn_trust
+}
+
+resource "aws_iam_role_policy" "dbt_transformation" {
+  count = local.orchestrated ? 1 : 0
+
+  name = "run-dbt-task"
+  role = aws_iam_role.dbt_transformation.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      # Step Functions docs, "Run a Job (.sync)" policy for Amazon ECS.
+      { Sid = "RunDbtTask", Effect = "Allow", Action = "ecs:RunTask", Resource = module.dbt_runner.task_definition_arn },
+      { Sid = "TrackTask", Effect = "Allow", Action = ["ecs:StopTask", "ecs:DescribeTasks"], Resource = "*" },
+      {
+        Sid      = "SyncRule"
+        Effect   = "Allow"
+        Action   = ["events:PutTargets", "events:PutRule", "events:DescribeRule"]
+        Resource = "${local.events_rule_arn}/StepFunctionsGetEventsForECSTaskRule"
+      },
+      {
+        Sid       = "PassTaskRoles"
+        Effect    = "Allow"
+        Action    = "iam:PassRole"
+        Resource  = [module.dbt_runner.execution_role_arn, local.foundation.data_engineer_role_arn]
+        Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
+      },
+    ]
+  })
+}
+
+resource "aws_sfn_state_machine" "dbt_transformation" {
+  count = local.orchestrated ? 1 : 0
+
+  name     = local.dbt_machine
+  role_arn = aws_iam_role.dbt_transformation.arn
+  definition = templatefile("${path.module}/../../../../orchestration/step_functions/dbt_transformation.asl.json", {
+    cluster_arn         = module.dbt_runner.cluster_arn
+    task_definition_arn = module.dbt_runner.task_definition_arn
+    subnet_a            = module.orchestration_network.subnet_ids[0]
+    subnet_b            = module.orchestration_network.subnet_ids[1]
+    security_group_id   = module.dbt_runner.security_group_id
+  })
+  depends_on = [aws_iam_role_policy.dbt_transformation]
+}
+
+# cdc_processing: skip if another execution runs, CDC apply (Glue), then dbt_transformation.
+resource "aws_iam_role" "cdc_processing" {
+  name               = local.cdc_machine
+  assume_role_policy = local.sfn_trust
+}
+
+resource "aws_iam_role_policy" "cdc_processing" {
+  count = local.orchestrated ? 1 : 0
+
+  name = "cdc-processing"
+  role = aws_iam_role.cdc_processing.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Sid = "CountOwnExecutions", Effect = "Allow", Action = "states:ListExecutions", Resource = "${local.sfn_prefix}:stateMachine:${local.cdc_machine}" },
+      {
+        Sid      = "RunCdcApply"
+        Effect   = "Allow"
+        Action   = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"]
+        Resource = "arn:aws:glue:${var.region}:${var.aws_account_id}:job/${module.apply_cdc.job_name}"
+      },
+      { Sid = "StartDbt", Effect = "Allow", Action = "states:StartExecution", Resource = aws_sfn_state_machine.dbt_transformation[0].arn },
+      {
+        Sid      = "TrackDbt"
+        Effect   = "Allow"
+        Action   = ["states:DescribeExecution", "states:StopExecution"]
+        Resource = "${local.sfn_prefix}:execution:${local.dbt_machine}:*"
+      },
+      {
+        Sid      = "SyncRule"
+        Effect   = "Allow"
+        Action   = ["events:PutTargets", "events:PutRule", "events:DescribeRule"]
+        Resource = "${local.events_rule_arn}/StepFunctionsGetEventsForStepFunctionsExecutionRule"
+      },
+      { Sid = "Alert", Effect = "Allow", Action = "sns:Publish", Resource = aws_sns_topic.pipeline_alerts.arn },
+      { Sid = "EncryptAlert", Effect = "Allow", Action = ["kms:GenerateDataKey", "kms:Decrypt"], Resource = local.foundation.data_kms_key_arn },
+    ]
+  })
+}
+
+resource "aws_sfn_state_machine" "cdc_processing" {
+  count = local.orchestrated ? 1 : 0
+
+  name     = local.cdc_machine
+  role_arn = aws_iam_role.cdc_processing.arn
+  definition = templatefile("${path.module}/../../../../orchestration/step_functions/cdc_processing.asl.json", {
+    apply_cdc_job_name    = module.apply_cdc.job_name
+    dbt_state_machine_arn = aws_sfn_state_machine.dbt_transformation[0].arn
+    alerts_topic_arn      = aws_sns_topic.pipeline_alerts.arn
+  })
+  depends_on = [aws_iam_role_policy.cdc_processing]
+}

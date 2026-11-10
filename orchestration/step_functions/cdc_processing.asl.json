@@ -1,0 +1,79 @@
+{
+  "Comment": "CDC processing (ADR 0029): apply new Bronze CDC files to Silver (Glue), then rebuild Gold (dbt). Input: {\"dms_task_arn\": \"...\"}. Overlapping executions skip themselves; failures notify SNS.",
+  "StartAt": "CountRunningExecutions",
+  "States": {
+    "CountRunningExecutions": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:sfn:listExecutions",
+      "Parameters": {
+        "StateMachineArn.$": "$$.StateMachine.Id",
+        "StatusFilter": "RUNNING",
+        "MaxResults": 2
+      },
+      "ResultSelector": { "running.$": "States.ArrayLength($.Executions)" },
+      "ResultPath": "$.concurrency",
+      "Next": "AnotherExecutionRunning"
+    },
+    "AnotherExecutionRunning": {
+      "Type": "Choice",
+      "Choices": [
+        { "Variable": "$.concurrency.running", "NumericGreaterThan": 1, "Next": "SkippedBecauseAnotherIsRunning" }
+      ],
+      "Default": "ApplyCdc"
+    },
+    "SkippedBecauseAnotherIsRunning": { "Type": "Succeed" },
+    "ApplyCdc": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${apply_cdc_job_name}",
+        "Arguments": { "--dms-task-arn.$": "$.dms_task_arn" }
+      },
+      "ResultSelector": {
+        "JobRunId.$": "$.Id",
+        "JobRunState.$": "$.JobRunState",
+        "ExecutionTime.$": "$.ExecutionTime"
+      },
+      "ResultPath": "$.cdc_apply",
+      "Retry": [
+        {
+          "Comment": "The CDC apply is idempotent (ADR 0028), so one retry is safe.",
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 1,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }],
+      "Next": "TransformGold"
+    },
+    "TransformGold": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${dbt_state_machine_arn}",
+        "Input": {
+          "run_id.$": "$$.Execution.Name",
+          "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
+        }
+      },
+      "ResultSelector": { "ExecutionArn.$": "$.ExecutionArn", "Status.$": "$.Status" },
+      "ResultPath": "$.dbt",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }],
+      "Next": "Succeeded"
+    },
+    "Succeeded": { "Type": "Succeed" },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${alerts_topic_arn}",
+        "Subject": "ProcureLake dev: CDC processing failed",
+        "Message.$": "States.Format('Execution {} failed. Error: {}', $$.Execution.Id, States.JsonToString($.error))"
+      },
+      "ResultPath": "$.notification",
+      "Next": "Failed"
+    },
+    "Failed": { "Type": "Fail", "Error": "CdcProcessingFailed", "Cause": "See the execution history and the SNS notification." }
+  }
+}

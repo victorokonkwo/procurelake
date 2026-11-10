@@ -13,23 +13,37 @@ locals {
   products_arn  = var.bucket_arns["products"]
   artifacts_arn = var.bucket_arns["artifacts"]
 
+  account_trust = {
+    Sid       = "AllowAccountPrincipals"
+    Effect    = "Allow"
+    Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
+    Action    = "sts:AssumeRole"
+  }
+  service_trust = [for services in [var.trusted_service_principals] : {
+    Sid       = "AllowServices"
+    Effect    = "Allow"
+    Principal = { Service = services }
+    Action    = "sts:AssumeRole"
+    Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
+  } if length(services) > 0]
+
   trust_policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = concat([local.account_trust], local.service_trust)
+  })
+
+  # The data engineer may additionally be assumed by services that run dbt for it (ECS tasks,
+  # ADR 0029); the ingestion role never is.
+  data_engineer_services = distinct(concat(var.trusted_service_principals, var.data_engineer_service_principals))
+  data_engineer_trust_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = concat(
-      [{
-        Sid       = "AllowAccountPrincipals"
-        Effect    = "Allow"
-        Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
-        Action    = "sts:AssumeRole"
-      }],
-      length(var.trusted_service_principals) == 0 ? [] : [{
-        Sid       = "AllowServices"
-        Effect    = "Allow"
-        Principal = { Service = var.trusted_service_principals }
-        Action    = "sts:AssumeRole"
-        Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
-      }]
-    )
+    Statement = concat([local.account_trust], length(local.data_engineer_services) == 0 ? [] : [{
+      Sid       = "AllowServices"
+      Effect    = "Allow"
+      Principal = { Service = local.data_engineer_services }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
+    }])
   })
 
   kms_statement = {
@@ -102,7 +116,7 @@ resource "aws_iam_role_policy" "ingestion" {
 resource "aws_iam_role" "data_engineer" {
   name                 = "${var.name_prefix}-data-engineer"
   description          = "Builds Silver/Gold: reads Bronze, writes lake, products and artifacts."
-  assume_role_policy   = local.trust_policy
+  assume_role_policy   = local.data_engineer_trust_policy
   max_session_duration = 3600
   tags                 = var.tags
 }
