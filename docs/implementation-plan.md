@@ -18,7 +18,7 @@ Source: the ProcureLake "Principal Data Engineer Implementation Plan" and "Produ
 |---|---|---|---|
 | 1 | Architecture & domain design | Source schema, SLOs, ADRs, synthetic data generator, initial data contracts | Approved architecture; runnable local PostgreSQL |
 | 2 | AWS infrastructure & Bronze | Terraform, S3, KMS, IAM, Glue Catalog, Athena, budgets, public-data ingestion | Reproducible AWS foundation and raw datasets |
-| 3 | Silver Iceberg | Glue Spark jobs, cleansing, dedup, schema validation, table creation | Query-ready Silver Iceberg tables |
+| 3 | Silver Iceberg | Glue Spark jobs, cleansing, dedup, schema validation, table creation | Query-ready Silver Iceberg tables. **In progress:** step 1 done 2026-11-10: operational tables snapshotted into Bronze (ADR 0023). Next: Silver framework, Glue job, and Terraform |
 | 4 | Gold analytics & dbt | Dimensions, facts, marts, incremental models, tests, docs | **First full Bronze-to-Gold demonstration** |
 | 5 | Change data capture | RDS logical replication, DMS, S3 CDC landing, event metadata | Live insert/update/delete capture |
 | 6 | CDC apply & orchestration | Idempotent merges, checkpoints, Step Functions, recovery workflows | End-to-end incremental pipeline |
