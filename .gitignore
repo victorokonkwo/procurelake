@@ -46,3 +46,6 @@ data/
 
 AGENTS.md
 CLAUDE.md
+
+# Local ingestion output (make ingest-usaspending-local)
+local_lake/

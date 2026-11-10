@@ -94,6 +94,22 @@ dev-foundation-plan: ## Plan dev/foundation (needs AWS credentials, backend.hcl,
 	terraform -chdir=infrastructure/live/dev/foundation init -input=false -backend-config=backend.hcl
 	terraform -chdir=infrastructure/live/dev/foundation plan -input=false -out=foundation.tfplan
 
+DEV_TF := infrastructure/live/dev/foundation
+
+.PHONY: ingest-usaspending
+ingest-usaspending: ## Ingest one settled day from USAspending into dev Bronze as the ingestion role (DATE=YYYY-MM-DD)
+	@test -n "$(DATE)" || { echo "Usage: make ingest-usaspending DATE=YYYY-MM-DD"; exit 1; }
+	PROCURELAKE_GIT_SHA=$$(git rev-parse --short HEAD) uv run python -m procurelake.ingestion.cli usaspending \
+	  --date $(DATE) \
+	  --raw-bucket $$(terraform -chdir=$(DEV_TF) output -json bucket_names | uv run python -c "import sys,json;print(json.load(sys.stdin)['raw'])") \
+	  --manifest-bucket $$(terraform -chdir=$(DEV_TF) output -json bucket_names | uv run python -c "import sys,json;print(json.load(sys.stdin)['artifacts'])") \
+	  --role-arn $$(terraform -chdir=$(DEV_TF) output -raw ingestion_role_arn)
+
+.PHONY: ingest-usaspending-local
+ingest-usaspending-local: ## Ingest one settled day into ./local_lake (no AWS) (DATE=YYYY-MM-DD)
+	@test -n "$(DATE)" || { echo "Usage: make ingest-usaspending-local DATE=YYYY-MM-DD"; exit 1; }
+	uv run python -m procurelake.ingestion.cli usaspending --date $(DATE) --local-root local_lake
+
 .PHONY: test-unit
 test-unit: ## Unit tests (no services required)
 	uv run pytest tests/unit
