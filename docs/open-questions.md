@@ -43,6 +43,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 36. **`gold_staging` database.** Staging is ephemeral (ADR 0026), so `procurelake_dev_gold_staging` is empty. Keep it for materialized intermediate models, or remove it (and its IAM grants) in the next foundation change.
 
 37. **RDS certificate verification.** The operator scripts connect with `sslmode=require` and do not verify the server certificate against the RDS CA bundle (ADR 0027). Decide whether to pin the bundle (`verify-full`).
+38. **Tenant catalog visibility.** Tenant roles can read Glue metadata (table names and schemas, not rows) for every Gold table (ADR 0030). Decide whether to limit `glue:GetTable(s)` to the tenant-facing tables, or accept schema visibility.
 
 ## Naming inconsistencies between the source documents
 23. ~~Cycle-time mart name~~ **Resolved: ADR 0017** (`mart_procurement_cycle_time`).

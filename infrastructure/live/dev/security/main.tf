@@ -1,11 +1,13 @@
 # dev / security: tenant isolation with Lake Formation on Gold (ADR 0030, work package D).
 #
-# EXPERIMENT FIRST (owner decision, 2026-11-10). Athena's docs say: "Athena does not currently
-# support DDL operations on Iceberg tables whose location is registered with Lake Formation".
-# dbt rebuilds Gold with CTAS + rename (DDL). This stack registers s3://<lake>/gold in HYBRID
-# access mode, where only opted-in principals (the tenant roles) are governed by Lake
-# Formation and everyone else (dbt, Glue) keeps IAM access, and then checks live whether
-# dbt still builds and whether tenants see only their rows. Deregistering reverts it.
+# s3://<lake>/gold is registered in HYBRID access mode: only opted-in principals (the tenant
+# roles) are governed by Lake Formation; everyone else (dbt, Glue) keeps IAM access, so dbt's
+# CTAS/MERGE still work on the registered location (live experiment, 2026-11-10; evidence in
+# docs/evidence/sprint1-week7-lake-formation-experiment.md).
+#
+# Lake Formation deletes a table's filters, grants and opt-ins when the table is dropped, and
+# a dbt `table` rebuild drops it. Tenant-facing marts are therefore incremental merges that
+# are never dropped. After a deliberate full refresh, re-apply this root (-parallelism=1).
 #
 #   - Data lake admins: var.data_lake_admin_arns. The defaults for new databases/tables stay
 #     IAM_ALLOWED_PRINCIPALS:ALL and the parameters are kept, so tables dbt (re)creates keep
@@ -177,9 +179,17 @@ resource "aws_iam_role_policy" "tenant" {
       {
         Sid       = "ListOwnQueryResults"
         Effect    = "Allow"
-        Action    = ["s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketMultipartUploads"]
+        Action    = ["s3:ListBucket", "s3:ListBucketMultipartUploads"]
         Resource  = local.art_arn
         Condition = { StringLike = { "s3:prefix" = ["athena_results/procurelake-dev-${replace(each.value, "_", "-")}/*"] } }
+      },
+      {
+        # GetBucketLocation carries no s3:prefix key, so under the condition above it was always
+        # denied, and Athena failed "Unable to verify/create output bucket" (live, 2026-11-10).
+        Sid      = "LocateResultsBucket"
+        Effect   = "Allow"
+        Action   = "s3:GetBucketLocation"
+        Resource = local.art_arn
       },
       {
         Sid      = "EncryptQueryResults"
@@ -211,7 +221,11 @@ resource "aws_lakeformation_data_cells_filter" "tenant" {
     row_filter {
       filter_expression = "tenant_id = '${each.value.tenant}'"
     }
-    column_wildcard {}
+    # Explicit empty list: with the block left empty the provider reports an inconsistent
+    # result after apply (null planned, empty set returned; first dev apply, 2026-11-10).
+    column_wildcard {
+      excluded_column_names = []
+    }
   }
 
   depends_on = [aws_lakeformation_data_lake_settings.this, aws_lakeformation_resource.gold]
@@ -226,6 +240,15 @@ resource "aws_lakeformation_permissions" "tenant_database" {
     name = local.gold_db
   }
   depends_on = [aws_lakeformation_data_lake_settings.this]
+
+  # ListPermissions filtered to this principal returns ["ALL", "DESCRIBE"], although the
+  # unfiltered listing of the database shows the role holding only DESCRIBE (checked live,
+  # 2026-11-10). The provider reads the filtered view, so every plan wanted to replace the
+  # grant. Matching it would mean granting ALL, so the drift is ignored instead. Side effect:
+  # a change to `permissions` here needs `-replace` to take effect.
+  lifecycle {
+    ignore_changes = [permissions]
+  }
 }
 
 resource "aws_lakeformation_permissions" "tenant_rows" {
@@ -243,6 +266,8 @@ resource "aws_lakeformation_permissions" "tenant_rows" {
 }
 
 # Hybrid access mode: only these principals, on these tables, are governed by Lake Formation.
+# Lake Formation rejects simultaneous opt-in updates with ConcurrentModificationException
+# (live, 2026-11-10: one of two parallel creates failed). Apply this root with -parallelism=1.
 resource "aws_lakeformation_opt_in" "tenant" {
   for_each = local.filters
 

@@ -27,6 +27,27 @@ def test_command_allow_list(command):
         entry.dbt_command({"PROCURELAKE_DBT_COMMAND": command})
 
 
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"PROCURELAKE_DBT_ARGS": "--full-refresh"},
+        {"PROCURELAKE_DBT_ARGS": "--select mart_awarded_value -f"},
+        {"PROCURELAKE_DBT_ARGS": "-xf"},
+        {"DBT_FULL_REFRESH": "true"},
+        {"DBT_FULL_REFRESH": "1"},
+    ],
+)
+def test_full_refresh_is_refused(env):
+    # A full refresh drops the Gold tables and, with them, their Lake Formation grants.
+    with pytest.raises(ValueError, match=r"full refresh|DBT_FULL_REFRESH"):
+        entry.dbt_command(env)
+
+
+def test_non_refresh_flags_are_kept():
+    cmd = entry.dbt_command({"PROCURELAKE_DBT_ARGS": "-x --select fct_invoice", "DBT_FULL_REFRESH": "false"})
+    assert cmd[-3:] == ["-x", "--select", "fct_invoice"]
+
+
 def test_artifacts_are_uploaded_per_run(tmp_path):
     (tmp_path / "run_results.json").write_text("{}")
     (tmp_path / "manifest.json").write_text("{}")

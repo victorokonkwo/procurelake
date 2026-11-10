@@ -125,6 +125,9 @@ Flow: PostgreSQL → AWS DMS (full load + CDC) → S3 Bronze CDC (Parquet + sour
 - A simple dashboard over the governed Gold models (tool not yet chosen; see open questions).
 
 **D3. Completion gate**
+
+Progress (2026-11-10): the four checks below passed live for `mart_awarded_value`, including after a dbt rebuild (ADR 0030, `docs/evidence/sprint1-week7-lake-formation-experiment.md`). They stay unchecked until every tenant product is covered.
+
 - [ ] A query run as Alder returns only Alder records.
 - [ ] A query run as Birch returns only Birch records.
 - [ ] Unauthorized table access fails.

@@ -1,3 +1,8 @@
+{{ config(
+    unique_key=['tenant_id', 'agency_id', 'award_month'],
+    post_hook="{{ delete_vanished_keys(['tenant_id', 'agency_id', 'award_month']) }}",
+) }}
+
 -- Days from solicitation publication to award (active awards on published solicitations),
 -- by tenant, agency and award month.
 select

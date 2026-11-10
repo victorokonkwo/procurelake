@@ -16,16 +16,23 @@ models:
     # with Hive column types, which cannot express timestamp(6), so staging is not stored at all.
     staging:
       +materialized: ephemeral
-    # Gold: Iceberg tables rebuilt in full each run (ADR 0026: exact and delete-safe at this
-    # scale; incremental merge arrives with CDC in Week 6). dbt-athena requires a unique
+    # Gold core: Iceberg tables rebuilt in full each run (ADR 0026: exact and delete-safe at this
+    # scale; not tenant-facing, so no Lake Formation grants to lose). dbt-athena requires a unique
     # location for Iceberg `table` builds because it swaps tables by rename.
     core:
       +materialized: table
       +table_type: iceberg
       +format: parquet
       +s3_data_naming: schema_table_unique
+    # Marts are tenant-facing and governed by Lake Formation (ADR 0030). A dropped table loses
+    # its filters, grants and opt-ins, so marts are never dropped: each run recomputes the mart
+    # and MERGEs it into the existing table; `delete_vanished_keys` removes groups that no
+    # longer exist. Schema changes fail the run: they need a deliberate full refresh by an
+    # operator, then re-granting (`terraform apply` of dev/security).
     marts:
-      +materialized: table
+      +materialized: incremental
+      +incremental_strategy: merge
+      +on_schema_change: fail
       +table_type: iceberg
       +format: parquet
       +s3_data_naming: schema_table_unique

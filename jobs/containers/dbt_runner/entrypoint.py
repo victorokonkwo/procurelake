@@ -32,6 +32,15 @@ def dbt_command(env: dict[str, str]) -> list[str]:
     if command not in _ALLOWED_COMMANDS:
         raise ValueError(f"unsupported dbt command {command!r}")
     extra = env.get("PROCURELAKE_DBT_ARGS", "").split()
+    # A full refresh drops and recreates the Gold Iceberg tables, and Lake Formation deletes a
+    # dropped table's tenant filters, grants and opt-ins with it (live, 2026-11-10; ADR 0030).
+    # It is an operator action followed by re-granting, never a scheduled run.
+    if env.get("DBT_FULL_REFRESH", "").strip().lower() not in ("", "0", "false"):
+        raise ValueError("DBT_FULL_REFRESH is not allowed in the scheduled runner")
+    for arg in extra:
+        short_flags = arg.startswith("-") and not arg.startswith("--")
+        if arg.startswith("--full-refresh") or (short_flags and "f" in arg[1:]):
+            raise ValueError(f"full refresh is not allowed in the scheduled runner: {arg!r}")
     return [
         "dbt", command,
         "--project-dir", str(PROJECT), "--profiles-dir", str(PROJECT),

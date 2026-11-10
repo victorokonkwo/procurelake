@@ -35,5 +35,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0027 | CDC source (RDS PostgreSQL) and AWS DMS into Bronze | Accepted | [0027-cdc-source-and-dms.md](0027-cdc-source-and-dms.md) |
 | 0028 | CDC apply engine: ordering, tombstones, checkpoint and lease | Accepted | [0028-cdc-apply-engine.md](0028-cdc-apply-engine.md) |
 | 0029 | Orchestration: Step Functions, EventBridge Scheduler, ECS Fargate dbt runner | Accepted | [0029-orchestration-step-functions.md](0029-orchestration-step-functions.md) |
+| 0030 | Tenant isolation: Lake Formation hybrid mode on Gold; marts merged, never dropped (amends ADR 0026 for marts) | Accepted | [0030-tenant-isolation-lake-formation.md](0030-tenant-isolation-lake-formation.md) |
 
 Update the **ADR file** column as each ADR is written.

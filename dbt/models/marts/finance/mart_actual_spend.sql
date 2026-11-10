@@ -1,3 +1,8 @@
+{{ config(
+    unique_key=['tenant_id', 'agency_id', 'supplier_id', 'paid_month', 'currency_code'],
+    post_hook="{{ delete_vanished_keys(['tenant_id', 'agency_id', 'supplier_id', 'paid_month', 'currency_code']) }}",
+) }}
+
 -- Actual spend: cash paid on invoices (paid_amount > 0), by tenant, agency, supplier, payment
 -- month and currency. NOT awarded value. The month is that of the latest payment (paid_at):
 -- the source keeps cumulative paid_amount, not a payment history.

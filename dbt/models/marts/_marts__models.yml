@@ -13,6 +13,16 @@ models:
       - unique_combination:
           arguments: {columns: [tenant_id, agency_id, supplier_id, award_month, currency_code]}
     columns:
+      - name: tenant_id
+        data_tests: [not_null]
+      - name: agency_id
+        data_tests: [not_null]
+      - name: supplier_id
+        data_tests: [not_null]
+      - name: award_month
+        data_tests: [not_null]
+      - name: currency_code
+        data_tests: [not_null]
       - name: awarded_value
         data_tests: [not_null]
 
@@ -26,6 +36,12 @@ models:
       - unique_combination:
           arguments: {columns: [tenant_id, currency_code, supplier_id]}
     columns:
+      - name: tenant_id
+        data_tests: [not_null]
+      - name: currency_code
+        data_tests: [not_null]
+      - name: supplier_id
+        data_tests: [not_null]
       - name: awarded_value_share
         data_tests: [not_null]
 
@@ -38,6 +54,13 @@ models:
     data_tests:
       - unique_combination:
           arguments: {columns: [tenant_id, agency_id, award_month]}
+    columns:
+      - name: tenant_id
+        data_tests: [not_null]
+      - name: agency_id
+        data_tests: [not_null]
+      - name: award_month
+        data_tests: [not_null]
 
   - name: mart_actual_spend
     description: >-
@@ -51,5 +74,15 @@ models:
       - unique_combination:
           arguments: {columns: [tenant_id, agency_id, supplier_id, paid_month, currency_code]}
     columns:
+      - name: tenant_id
+        data_tests: [not_null]
+      - name: agency_id
+        data_tests: [not_null]
+      - name: supplier_id
+        data_tests: [not_null]
+      - name: paid_month
+        data_tests: [not_null]
+      - name: currency_code
+        data_tests: [not_null]
       - name: actual_spend
         data_tests: [not_null]
