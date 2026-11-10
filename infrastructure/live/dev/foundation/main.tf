@@ -11,6 +11,9 @@ module "data_key" {
 
   description = "ProcureLake dev data encryption (S3 lakehouse buckets)"
   alias       = "${local.name_prefix}-data"
+
+  # CloudWatch alarms and EventBridge rules publish to the KMS-encrypted alerts topic (Week 8).
+  sns_publishing_services = ["cloudwatch", "events"]
 }
 
 module "lakehouse" {

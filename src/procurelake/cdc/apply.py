@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 
 from pyspark.sql import DataFrame, SparkSession, Window
@@ -67,6 +68,9 @@ class CdcApplyResult:
     full_load_tombstones: int
     last_sequence: str | None
     quarantine_uri: str | None
+    # Oldest source commit (aware, UTC) among the batch's CDC (not full-load) events: what the
+    # freshness metric measures from. Full-load rows carry the task start time, not a commit.
+    oldest_cdc_commit_ts: datetime | None = None
 
 
 def load_id_of(uri: str) -> str:
@@ -281,6 +285,16 @@ def apply_events(
 
     _validate_applied(spark, fq_table, view, spec)  # applied (non-held) keys only
     spark.sql(f"ALTER TABLE {fq_table} SET TBLPROPERTIES ('{LAST_BATCH_PROPERTY}' = '{batch_id}')")
+    # Epoch microseconds, computed in Spark: collecting a timestamp converts it to the Python
+    # process's local time zone (found by the Spark test on a non-UTC laptop).
+    oldest_micros = (
+        events.where(~F.col("_source_file").contains("/LOAD"))
+        .agg(F.min(F.unix_micros("_source_commit_ts")))
+        .first()[0]
+    )
+    oldest_cdc_commit = (
+        None if oldest_micros is None else datetime.fromtimestamp(oldest_micros / 1_000_000, tz=UTC)
+    )
     events.unpersist()
     return CdcApplyResult(
         spec.silver_table,
@@ -294,6 +308,7 @@ def apply_events(
         full_load_tombstones,
         last_sequence,
         quarantine_uri,
+        oldest_cdc_commit,
     )
 
 

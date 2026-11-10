@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars (git-ignored).
+aws_account_id = "123456789012"
+state_bucket   = "procurelake-tfstate-123456789012-ca-central-1"

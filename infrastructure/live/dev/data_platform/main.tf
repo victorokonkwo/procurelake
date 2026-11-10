@@ -254,6 +254,15 @@ locals {
         Resource = "*"
       },
       {
+        # CDC freshness and quality metrics (src/procurelake/cdc/metrics.py). PutMetricData has
+        # no resource-level permissions; the namespace condition limits it.
+        Sid       = "PublishCdcMetrics"
+        Effect    = "Allow"
+        Action    = "cloudwatch:PutMetricData"
+        Resource  = "*"
+        Condition = { StringEquals = { "cloudwatch:namespace" = "ProcureLake/CDC" } }
+      },
+      {
         Sid      = "DenyBronzeDeletes"
         Effect   = "Deny"
         Action   = ["s3:DeleteObject", "s3:DeleteObjectVersion"]
@@ -288,6 +297,7 @@ module "apply_cdc" {
     "--silver-location"  = "s3://${local.buckets["lake"]}/silver"
     "--quarantine-root"  = "s3://${local.buckets["raw"]}/quarantine"
     "--region"           = var.region
+    "--environment"      = "dev" # publish ProcureLake/CDC metrics (Week 8)
   }
 }
 
@@ -325,6 +335,50 @@ module "dbt_runner" {
 resource "aws_sns_topic" "pipeline_alerts" {
   name              = "${local.name_prefix}-pipeline-alerts"
   kms_master_key_id = local.foundation.data_kms_key_arn
+}
+
+# The default topic policy (owner account), plus CloudWatch alarms and EventBridge rules of
+# this account (Week 8 monitoring). The KMS key policy lets both use the key through SNS.
+resource "aws_sns_topic_policy" "pipeline_alerts" {
+  arn = aws_sns_topic.pipeline_alerts.arn
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "OwnerAccount"
+        Effect    = "Allow"
+        Principal = { AWS = "*" }
+        Action = [
+          "SNS:GetTopicAttributes", "SNS:SetTopicAttributes", "SNS:AddPermission", "SNS:RemovePermission",
+          "SNS:DeleteTopic", "SNS:Subscribe", "SNS:ListSubscriptionsByTopic", "SNS:Publish",
+        ]
+        Resource  = aws_sns_topic.pipeline_alerts.arn
+        Condition = { StringEquals = { "AWS:SourceOwner" = var.aws_account_id } }
+      },
+      {
+        Sid       = "CloudWatchAlarms"
+        Effect    = "Allow"
+        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Action    = "sns:Publish"
+        Resource  = aws_sns_topic.pipeline_alerts.arn
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = var.aws_account_id }
+          ArnLike      = { "aws:SourceArn" = "arn:aws:cloudwatch:${var.region}:${var.aws_account_id}:alarm:${local.name_prefix}-*" }
+        }
+      },
+      {
+        Sid       = "EventBridgeRules"
+        Effect    = "Allow"
+        Principal = { Service = "events.amazonaws.com" }
+        Action    = "sns:Publish"
+        Resource  = aws_sns_topic.pipeline_alerts.arn
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = var.aws_account_id }
+          ArnLike      = { "aws:SourceArn" = "arn:aws:events:${var.region}:${var.aws_account_id}:rule/${local.name_prefix}-*" }
+        }
+      },
+    ]
+  })
 }
 
 resource "aws_sns_topic_subscription" "pipeline_alerts_email" {

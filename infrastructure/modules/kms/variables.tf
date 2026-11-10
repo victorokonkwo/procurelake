@@ -29,3 +29,14 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "sns_publishing_services" {
+  description = "AWS service principal names (e.g. cloudwatch, events) allowed to use the key through SNS, to publish to topics encrypted with it."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for s in var.sns_publishing_services : contains(["cloudwatch", "events"], s)])
+    error_message = "Only cloudwatch and events are expected to publish to the platform's encrypted topics."
+  }
+}

@@ -124,6 +124,9 @@ def test_full_load_then_inserts_updates_and_deletes(spark, env):
     first = _apply(spark, env, [load], "20261110T134000Z-00000001")
     second = _apply(spark, env, [cdc], "20261110T134300Z-00000002")
     assert (first.status, first.applied_keys, second.applied_keys) == ("applied", 2, 3)
+    # Freshness metric input (Week 8): full-load rows carry no commit time; CDC rows do.
+    assert first.oldest_cdc_commit_ts is None
+    assert second.oldest_cdc_commit_ts == datetime(2026, 11, 10, 13, 41, 34, 820217, tzinfo=UTC)
 
     state = _state(spark, env)
     assert state[A].payment_status == "paid" and state[A].paid_amount == Decimal("100.00")

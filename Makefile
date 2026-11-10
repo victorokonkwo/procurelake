@@ -75,7 +75,7 @@ TF_DIRS := infrastructure/modules/kms infrastructure/modules/budgets infrastruct
            infrastructure/modules/cdc_network infrastructure/modules/rds_postgresql \
            infrastructure/modules/dms_s3_cdc infrastructure/live/dev/cdc \
            infrastructure/modules/public_network infrastructure/modules/dbt_runner \
-           infrastructure/live/dev/security \
+           infrastructure/live/dev/security infrastructure/live/dev/observability \
            infrastructure/bootstrap infrastructure/live/dev/foundation infrastructure/live/dev/data_platform
 
 .PHONY: tf-fmt
@@ -270,6 +270,21 @@ cdc-failure-drill: ## Week 6, live: hold the invoices lease, watch a scheduled r
 	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
 	  --state-machine-arn $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_processing_state_machine_arn) \
 	  --checkpoint-table $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_checkpoint_table_name) \
+	  --alerts-topic-arn $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw pipeline_alerts_topic_arn) \
+	  --engineer-role-arn $$($(TFOUT) -raw data_engineer_role_arn) \
+	  --workgroup $$($(TFOUT) -raw athena_workgroup_name) \
+	  --silver-database $$($(TFOUT) -raw silver_database_name) \
+	  --gold-database $$($(TFOUT) -raw gold_database_name)
+
+.PHONY: cdc-stall-drill
+cdc-stall-drill: ## Week 8, live: stop DMS, commit changes, alarm must fire; resume, all changes reach Gold, alarm clears
+	uv run python scripts/aws/cdc_stall_drill.py \
+	  --host $$($(CDCOUT) -raw source_address) --port $$($(CDCOUT) -raw source_port) \
+	  --database $$($(CDCOUT) -raw source_database_name) \
+	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
+	  --task-arn $$($(CDCOUT) -raw replication_task_arn) \
+	  --alarm-name procurelake-dev-cdc-dms-source-latency \
+	  --state-machine-arn $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_processing_state_machine_arn) \
 	  --alerts-topic-arn $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw pipeline_alerts_topic_arn) \
 	  --engineer-role-arn $$($(TFOUT) -raw data_engineer_role_arn) \
 	  --workgroup $$($(TFOUT) -raw athena_workgroup_name) \

@@ -17,10 +17,12 @@ from __future__ import annotations
 import argparse
 import logging
 import re
+from datetime import UTC, datetime
 
 from procurelake.cdc.apply import load_id_of
 from procurelake.cdc.checkpoint import CheckpointStore
 from procurelake.cdc.job import run_cdc_table
+from procurelake.cdc.metrics import metric_data, publish
 
 logger = logging.getLogger(__name__)
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -67,6 +69,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--dms-task-arn", default="", help="For full-load completeness (optional)")
     parser.add_argument("--region", default="ca-central-1")
     parser.add_argument("--wheel-sha256", default="")
+    parser.add_argument("--environment", default="", help="Publish CloudWatch metrics under this environment")
     parser.add_argument("--JOB_RUN_ID", dest="job_run_id", default="")
     args, _unknown = parser.parse_known_args(argv)
     return args
@@ -103,6 +106,7 @@ def main(argv: list[str]) -> None:
     )
     owner = f"glue:{args.job_run_id or 'manual'}"
     problems: list[str] = []
+    committed: list[tuple] = []  # (result, time it reached Silver) for the metrics
     for table in wanted:
         spec = specs[table]
         fq = f"{args.catalog}.{args.silver_database}.{spec.silver_table}"
@@ -126,6 +130,8 @@ def main(argv: list[str]) -> None:
             logger.exception("%s: CDC apply failed", fq)
             problems.append(f"{table}: {exc}")
             continue
+        reached_silver = datetime.now(UTC)
+        committed.extend((r, reached_silver) for r in results)
         for r in results:
             logger.info(
                 "%s %s: %s files=%d events=%d rejected=%d held=%d applied_keys=%d full_load_tombstones=%d",
@@ -136,5 +142,10 @@ def main(argv: list[str]) -> None:
                 problems.append(
                     f"{table}: batch {r.batch_id} blocked by the quality gate ({r.quarantine_uri})"
                 )
+    if args.environment:
+        sent = publish(
+            boto3.client("cloudwatch", region_name=args.region), metric_data(committed, args.environment)
+        )
+        logger.info("published %d CloudWatch metrics", sent)
     if problems:
         raise CdcJobError("; ".join(problems))

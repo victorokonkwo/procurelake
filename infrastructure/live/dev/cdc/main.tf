@@ -116,3 +116,66 @@ resource "aws_scheduler_schedule" "cdc_processing" {
     input    = jsonencode({ dms_task_arn = module.dms[0].replication_task_arn })
   }
 }
+
+# ----------------------------------------------------------------------------- DMS monitoring
+# Week 8 (implementation plan E): a stopped or stalled DMS task is a *silent* failure. The CDC
+# schedule keeps succeeding with nothing new to apply while Silver and Gold go stale. Two
+# signals reach the alerts topic (its KMS key and policy allow CloudWatch and EventBridge):
+#
+#   - CDCLatencySource above 5 minutes, with missing data treated as breaching: a stopped task
+#     publishes no task metrics at all, so silence is an alarm too.
+#   - Every replication task state change or failure (EventBridge, best effort per AWS).
+#
+# They live here so they exist only while the task does (an absent task must not alarm).
+locals {
+  alerts_arn = try(data.terraform_remote_state.data_platform.outputs.pipeline_alerts_topic_arn, null)
+  monitor    = var.enable_dms && local.alerts_arn != null
+}
+
+resource "aws_cloudwatch_metric_alarm" "dms_source_latency" {
+  count = local.monitor ? 1 : 0
+
+  alarm_name          = "${local.name}-dms-source-latency"
+  alarm_description   = "DMS has not captured source changes for over 5 minutes, or the task publishes no metrics (stopped). Gold goes stale silently. Runbook: docs/runbooks/cdc-dms-stall.md"
+  namespace           = "AWS/DMS"
+  metric_name         = "CDCLatencySource"
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 5
+  datapoints_to_alarm = 5
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 300
+  treat_missing_data  = "breaching"
+  dimensions          = module.dms[0].cloudwatch_task_dimensions
+  alarm_actions       = [local.alerts_arn]
+  ok_actions          = [local.alerts_arn]
+}
+
+resource "aws_cloudwatch_event_rule" "dms_task_state" {
+  count = local.monitor ? 1 : 0
+
+  name        = "${local.name}-dms-task-state"
+  description = "Replication task state changes and failures of the dev CDC task, to the alerts topic."
+  event_pattern = jsonencode({
+    source        = ["aws.dms"]
+    "detail-type" = ["DMS Replication Task State Change"]
+    resources     = [module.dms[0].replication_task_arn]
+  })
+}
+
+resource "aws_cloudwatch_event_target" "dms_task_state" {
+  count = local.monitor ? 1 : 0
+
+  rule = aws_cloudwatch_event_rule.dms_task_state[0].name
+  arn  = local.alerts_arn
+
+  input_transformer {
+    input_paths = {
+      event   = "$.detail.eventType"
+      message = "$.detail.detailMessage"
+      time    = "$.time"
+      task    = "$.resources[0]"
+    }
+    input_template = "\"ProcureLake dev CDC: DMS task event <event> at <time>: <message> (task <task>). Runbook: docs/runbooks/cdc-dms-stall.md\""
+  }
+}
