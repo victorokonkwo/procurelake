@@ -1,0 +1,49 @@
+# Synthetic tenant definitions for the ProcureLake data generator.
+#
+# Every tenant here is FICTIONAL. The names, agencies, suppliers, and amounts are generated
+# and do not represent any real government, company, or SOVRA customer.
+#
+# Validated by procurelake.data_generator.config.GeneratorConfig.
+
+# Every generated timestamp is <= as_of, so the dataset is the same whenever it is generated.
+as_of: "2026-10-31T23:59:59Z"
+history_start: "2024-01-01T00:00:00Z"
+
+tenants:
+  - tenant_id: tenant_alder
+    tenant_name: "Alder Regional Government (synthetic)"
+    agency_names:
+      - "Alder Department of Transportation"
+      - "Alder Health Services"
+      - "Alder Department of Education"
+      - "Alder Public Works"
+      - "Alder Information Technology Office"
+      - "Alder Parks and Recreation"
+      - "Alder Emergency Management"
+      - "Alder Finance and Treasury"
+    supplier_count: 60
+    solicitation_count: 400
+    # Currency mix for new solicitations (weights are normalised).
+    currencies:
+      CAD: 1.0
+    # Share of extra suppliers that are near-duplicate spellings of an existing supplier,
+    # so Silver deduplication and dim_supplier canonicalisation have something to resolve.
+    near_duplicate_supplier_rate: 0.05
+    # Share of purchase orders that come from no competitive award (award_id is NULL).
+    open_market_po_ratio: 0.25
+
+  - tenant_id: tenant_birch
+    tenant_name: "Birch Municipal Authority (synthetic)"
+    agency_names:
+      - "Birch City Planning"
+      - "Birch Water and Utilities"
+      - "Birch Transit Commission"
+      - "Birch Community Services"
+      - "Birch Police Services"
+    supplier_count: 40
+    solicitation_count: 250
+    currencies:
+      CAD: 0.85
+      USD: 0.15
+    near_duplicate_supplier_rate: 0.05
+    open_market_po_ratio: 0.15

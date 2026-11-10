@@ -2,7 +2,7 @@
 
 **Enterprise Procurement Intelligence & AI Data Platform.** A unified, production-style AWS procurement lakehouse built as a portfolio-grade reference implementation.
 
-> **Status:** Sprint 1, Day 1 complete: local PostgreSQL operational schema, migration runner, tests, and ADRs. AWS resources haven't been deployed yet. See `docs/implementation-plan.md`.
+> **Status:** Sprint 1, Days 1–2 complete: local PostgreSQL operational schema, migration runner, deterministic synthetic data generator (two fictional tenants), tests, and ADRs. AWS resources haven't been deployed yet. See `docs/implementation-plan.md`.
 
 ## What it does
 
@@ -44,6 +44,7 @@ cp .env.example .env      # then replace the placeholder password (local only)
 make install              # uv sync --locked (Python 3.11)
 make db-up                # PostgreSQL 17 with wal_level=logical
 make db-migrate           # creates the `procurement` schema
+make db-seed              # loads the synthetic two-tenant dataset (seed 42)
 make lint
 make test                 # unit + PostgreSQL integration tests
 ```

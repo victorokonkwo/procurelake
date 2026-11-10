@@ -40,6 +40,21 @@ db-migrate: check-env ## Apply pending operational-schema migrations
 db-status: check-env ## Show applied and pending migrations
 	uv run python scripts/local/db_migrate.py --status
 
+SEED ?= 42
+SCALE ?= 1
+
+.PHONY: seed-preview
+seed-preview: ## Generate the synthetic dataset without loading (counts + fingerprint)
+	uv run python scripts/local/seed_db.py --dry-run --seed $(SEED) --scale $(SCALE)
+
+.PHONY: db-seed
+db-seed: check-env ## Load the synthetic dataset into an empty local database (SEED=42 SCALE=1)
+	uv run python scripts/local/seed_db.py --seed $(SEED) --scale $(SCALE)
+
+.PHONY: db-reseed
+db-reseed: check-env ## Truncate all procurement tables, then load the synthetic dataset
+	uv run python scripts/local/seed_db.py --reset --seed $(SEED) --scale $(SCALE)
+
 .PHONY: db-psql
 db-psql: check-env ## Open psql inside the PostgreSQL container
 	$(COMPOSE) exec postgres psql -U "$(POSTGRES_USER)" -d "$(POSTGRES_DB)"

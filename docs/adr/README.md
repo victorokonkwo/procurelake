@@ -23,5 +23,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0015 | Runtime versions: Glue 5.1 / Python 3.11, PostgreSQL 17 | Accepted | [0015-runtime-versions.md](0015-runtime-versions.md) |
 | 0016 | Operational (OLTP) schema design | Accepted | [0016-oltp-schema-design.md](0016-oltp-schema-design.md) |
 | 0017 | Naming conflicts between planning documents | Accepted | [0017-naming-conventions.md](0017-naming-conventions.md) |
+| 0018 | Deterministic synthetic data generator | Accepted | [0018-synthetic-data-generator.md](0018-synthetic-data-generator.md) |
 
 Update the **ADR file** column as each ADR is written.

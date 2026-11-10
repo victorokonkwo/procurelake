@@ -263,7 +263,7 @@ The platform isn't complete until all of these pass, with automated integration 
 | Day | Tasks | Definition of done |
 |---|---|---|
 | 1 ✅ | Initialize the repository and ADRs; local Docker PostgreSQL; database schema | All source tables exist with constraints. **Done 2026-11-10:** 8 tables in schema `procurement`, verified by 39 passing tests (ADRs 0001–0012, 0015–0017) |
-| 2 | Synthetic procurement generator with two tenants | Repeatable seeded dataset with valid relationships |
+| 2 ✅ | Synthetic procurement generator with two tenants | Repeatable seeded dataset with valid relationships. **Done 2026-11-10:** seed 42 gives fingerprint `350d064e…` with 5,702 rows across both tenants. Loads under every DB constraint and round-trips exactly. 75 tests (ADR 0018) |
 | 3 | Terraform backend, AWS authentication, KMS, buckets, IAM, budget alerts | `terraform plan` succeeds; foundation deploys |
 | 4 | First public API/CSV ingestion with a manifest | Raw source data and metadata land in S3 |
 | 5 | Glue Catalog and Athena; first integration tests | Bronze data is queryable; test evidence recorded |
@@ -277,7 +277,7 @@ The sprint should end with a reproducible commit and a working foundation, not j
 - [ ] Set up Terraform bootstrap and the dev environment
 - [x] Create the local PostgreSQL Docker Compose setup and schema
 - [ ] Create initial source contracts and configuration files
-- [ ] Implement the synthetic procurement data generator
+- [x] Implement the synthetic procurement data generator
 - [x] Add architecture ADRs and the README
 
 Don't create every directory up front. Scaffold the core and grow each domain as it is built.
