@@ -9,6 +9,8 @@ Sequence per table (ADR 0028):
    checkpoint (a transaction that re-checks the lease).
 5. Release the lease, also on failure.
 
+A load_id whose full load DMS has not finished is deferred whole (``deferred_load_ids``).
+
 A failure between steps 3 and 4 leaves the files unrecorded: the next run reads them again and
 the idempotent apply makes the replay a no-op (C4). A quality-gate block stops the table without
 recording anything.
@@ -45,6 +47,7 @@ def run_cdc_table(
     source_schema: str = "procurement",
     table_location: str | None = None,
     complete_full_loads: frozenset[str] = frozenset(),
+    deferred_load_ids: frozenset[str] = frozenset(),
     lease_ttl_seconds: int = 1800,
 ) -> list[CdcApplyResult]:
     lease = checkpoints.acquire_lease(spec.silver_table, owner, lease_ttl_seconds)
@@ -59,6 +62,11 @@ def run_cdc_table(
             by_load.setdefault(load_id_of(f"/{key}"), []).append(key)
         all_files = table_files(store, cdc_root, source_schema, spec.source_table)
         for load_id in sorted(by_load):
+            if load_id in deferred_load_ids:
+                # Its full load is still running: applying part of it now would record the
+                # load files as applied without the complete-load tombstoning, and that could
+                # never be redone. Wait for a later run (and keep later load_ids waiting too).
+                break
             keys = by_load[load_id]
             load_files = {k for k in all_files if load_id_of(f"/{k}") == load_id and is_full_load_file(k)}
             # Tombstone absent keys only when this batch carries the whole, completed full load.

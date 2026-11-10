@@ -50,7 +50,7 @@ def test_completed_full_loads_uses_the_task_target_load_id():
             },
             {"ReplicationTaskArn": TASK},
         )
-        assert completed_full_loads(dms, TASK) == {"awards": "20261110T130454Z"}
+        assert completed_full_loads(dms, TASK) == {"awards": "20261110T130454Z"}  # invoices still loading
 
 
 def test_parse_args_ignores_glue_arguments():

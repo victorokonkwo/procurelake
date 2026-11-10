@@ -6,7 +6,9 @@ fails at the end if any table was blocked or errored, after attempting all of th
 
 Full-load completeness (needed to tombstone keys missing from a re-seeded source) comes from
 AWS DMS when a task ARN is given: a table's full load under the task's current ``load_id``
-is complete when DMS reports ``TableState = "Table completed"`` for it. Without a task ARN
+is complete when DMS reports ``TableState = "Table completed"`` for it. Until then that load is
+**deferred** for the table (none of its files are applied), so a scheduled run that starts
+during the full load cannot record it as applied without the tombstoning. Without a task ARN
 (the disposable CDC stack is down), no full load is treated as complete.
 """
 
@@ -30,6 +32,12 @@ class CdcJobError(RuntimeError):
 
 def completed_full_loads(dms, task_arn: str, schema: str = "procurement") -> dict[str, str]:
     """{table: load_id} for tables whose full load DMS reports as completed for ``task_arn``."""
+    load_id, done = dms_load_status(dms, task_arn, schema)
+    return {table: load_id for table in done}
+
+
+def dms_load_status(dms, task_arn: str, schema: str = "procurement") -> tuple[str, set[str]]:
+    """(the task's current load_id, tables whose full load DMS reports as completed)."""
     task = dms.describe_replication_tasks(Filters=[{"Name": "replication-task-arn", "Values": [task_arn]}])[
         "ReplicationTasks"
     ][0]
@@ -37,13 +45,13 @@ def completed_full_loads(dms, task_arn: str, schema: str = "procurement") -> dic
         Filters=[{"Name": "endpoint-arn", "Values": [task["TargetEndpointArn"]]}]
     )["Endpoints"][0]
     load_id = load_id_of(f"/{endpoint['S3Settings']['BucketFolder'].strip('/')}/")
-    done: dict[str, str] = {}
+    done: set[str] = set()
     paginator = dms.get_paginator("describe_table_statistics")
     for page in paginator.paginate(ReplicationTaskArn=task_arn):
         for stats in page["TableStatistics"]:
             if stats["SchemaName"] == schema and stats["TableState"] == "Table completed":
-                done[stats["TableName"]] = load_id
-    return done
+                done.add(stats["TableName"])
+    return load_id, done
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -86,10 +94,12 @@ def main(argv: list[str]) -> None:
     spark = SparkSession.builder.getOrCreate()
     store = S3LandingStore(boto3.client("s3", region_name=args.region), args.raw_bucket)
     checkpoints = CheckpointStore(boto3.client("dynamodb", region_name=args.region), args.checkpoint_table)
-    complete = (
-        completed_full_loads(boto3.client("dms", region_name=args.region), args.dms_task_arn)
+    # With a DMS task: its current load counts as complete for tables DMS reports done, and is
+    # deferred (not applied at all yet) for the others. Without one, nothing is complete.
+    current_load, done = (
+        dms_load_status(boto3.client("dms", region_name=args.region), args.dms_task_arn)
         if args.dms_task_arn
-        else {}
+        else (None, set())
     )
     owner = f"glue:{args.job_run_id or 'manual'}"
     problems: list[str] = []
@@ -107,7 +117,10 @@ def main(argv: list[str]) -> None:
                 args.quarantine_root,
                 owner,
                 table_location=f"{args.silver_location.rstrip('/')}/{spec.silver_table}",
-                complete_full_loads=frozenset({complete[table]}) if table in complete else frozenset(),
+                complete_full_loads=frozenset({current_load}) if table in done else frozenset(),
+                deferred_load_ids=(
+                    frozenset({current_load}) if current_load and table not in done else frozenset()
+                ),
             )
         except Exception as exc:  # attempt every table, then fail the run
             logger.exception("%s: CDC apply failed", fq)

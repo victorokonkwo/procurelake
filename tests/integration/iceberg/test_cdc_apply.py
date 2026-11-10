@@ -315,3 +315,19 @@ def test_crash_after_merge_before_checkpoint_replays_safely(spark, env, checkpoi
     active = active_rows(spark.table(env["table"]))
     assert sorted(r.invoice_id for r in active.collect()) == [A, C]  # no duplicate, B stays deleted
     assert len(checkpoints.applied_files("silver_invoices")) == 2
+
+
+def test_job_defers_a_load_whose_full_load_is_still_running(spark, env, checkpoints):
+    """Regression (found in review before the scheduled session): a run during the DMS full
+    load must not record the load as applied without the complete-load tombstoning."""
+    b = env["bronze"]
+    b.write("20261110T130454Z", "LOAD00000001.parquet", [_inv("I", LOAD_TS, A), _inv("I", LOAD_TS, C)])
+    _job(spark, env, checkpoints, complete_full_loads=frozenset({"20261110T130454Z"}))
+    # New session: re-seeded source without C; its full load has landed but is not complete yet.
+    b.write("20261111T090000Z", "LOAD00000001.parquet", [_inv("I", "2026-11-11 09:01:00.000000", A)])
+    assert _job(spark, env, checkpoints, deferred_load_ids=frozenset({"20261111T090000Z"})) == []
+    assert not any("20261111T090000Z" in k for k in checkpoints.applied_files("silver_invoices"))
+    assert not _state(spark, env)[C]._is_deleted  # nothing applied yet
+    # DMS now reports the full load complete: applied whole, and C is tombstoned.
+    [result] = _job(spark, env, checkpoints, complete_full_loads=frozenset({"20261111T090000Z"}))
+    assert result.full_load_tombstones == 1 and _state(spark, env)[C]._is_deleted
