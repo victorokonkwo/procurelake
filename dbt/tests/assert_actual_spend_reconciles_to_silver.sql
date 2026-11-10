@@ -9,7 +9,7 @@ with mart as (
 silver as (
     select tenant_id, currency_code, sum(paid_amount) as amount
     from {{ source('silver', 'silver_invoices') }}
-    where paid_amount > 0
+    where paid_amount > 0 and not coalesce(_is_deleted, false)
     group by tenant_id, currency_code
 )
 

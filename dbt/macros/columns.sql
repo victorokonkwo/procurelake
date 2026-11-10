@@ -9,7 +9,8 @@
     {%- set p = (alias ~ '.') if alias else '' -%}
     {{ p }}_batch_id as source_batch_id,
     {{ p }}_source_file as source_file,
-    {{ p }}_source_line_hash as source_line_hash
+    {{ p }}_source_line_hash as source_line_hash,
+    {{ p }}_source_sequence as source_sequence
 {%- endmacro %}
 
 {#- The lineage columns as already renamed by staging (for core models). -#}
@@ -17,5 +18,6 @@
     {%- set p = (alias ~ '.') if alias else '' -%}
     {{ p }}source_batch_id,
     {{ p }}source_file,
-    {{ p }}source_line_hash
+    {{ p }}source_line_hash,
+    {{ p }}source_sequence
 {%- endmacro %}

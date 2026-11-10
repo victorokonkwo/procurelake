@@ -99,10 +99,9 @@ variable "timeout_minutes" {
   default     = 30
 }
 
-variable "log_retention_days" {
-  description = "Retention for the Glue log groups."
-  type        = number
-  default     = 30
+variable "log_group_arns" {
+  description = "Glue log groups the job writes to (/aws-glue/jobs/error and /output; account-wide)."
+  type        = list(string)
 }
 
 variable "tags" {

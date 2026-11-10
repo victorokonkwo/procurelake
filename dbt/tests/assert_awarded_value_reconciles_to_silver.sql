@@ -9,7 +9,7 @@ with mart as (
 silver as (
     select tenant_id, currency_code, sum(award_amount) as amount, count(*) as n
     from {{ source('silver', 'silver_awards') }}
-    where status = 'active'
+    where status = 'active' and not coalesce(_is_deleted, false)
     group by tenant_id, currency_code
 )
 

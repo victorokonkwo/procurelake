@@ -2,7 +2,8 @@
 # (ADR 0025). The module owns:
 #
 #   - the job's IAM role: trusted by glue.amazonaws.com from this account only, with the
-#     caller's data-access policy plus write access to the job's own CloudWatch log groups
+#     caller's data-access policy plus write access to the Glue log groups (created by the
+#     caller once per account, since every Glue job shares them)
 #   - the script and wheel objects in the artifacts bucket; the wheel key contains its SHA-256,
 #     so every code change is a new, immutable object and the job always names exactly one build
 #   - the job: one concurrent run (one writer per target table), no automatic retries, bookmarks
@@ -12,13 +13,10 @@
 
 locals {
   wheel_sha256 = filesha256(var.wheel_path)
-  wheel_key    = "${var.artifacts_prefix}/wheels/${local.wheel_sha256}/${basename(var.wheel_path)}"
-  script_key   = "${var.artifacts_prefix}/scripts/${var.name}/${basename(var.script_path)}"
-  temp_uri     = "s3://${var.artifacts_bucket_name}/${var.artifacts_prefix}/temp/${var.name}/"
-
-  # Glue 5.x writes driver/executor logs to these groups by default (AWS Glue docs:
-  # "Logging for AWS Glue jobs"). They are created here so their retention is managed.
-  log_group_names = ["/aws-glue/jobs/error", "/aws-glue/jobs/output"]
+  # Per-job key: several jobs ship the same wheel, and each S3 object must have one owner.
+  wheel_key  = "${var.artifacts_prefix}/wheels/${var.name}/${local.wheel_sha256}/${basename(var.wheel_path)}"
+  script_key = "${var.artifacts_prefix}/scripts/${var.name}/${basename(var.script_path)}"
+  temp_uri   = "s3://${var.artifacts_bucket_name}/${var.artifacts_prefix}/temp/${var.name}/"
 
   additional_python_modules = join(",", concat(
     ["s3://${var.artifacts_bucket_name}/${local.wheel_key}"],
@@ -59,15 +57,6 @@ resource "aws_s3_object" "wheel" {
   tags         = var.tags
 }
 
-# ----------------------------------------------------------------------------- logs
-resource "aws_cloudwatch_log_group" "glue" {
-  for_each = toset(local.log_group_names)
-
-  name              = each.value
-  retention_in_days = var.log_retention_days
-  tags              = var.tags
-}
-
 # ----------------------------------------------------------------------------- role
 resource "aws_iam_role" "job" {
   name        = var.name
@@ -99,12 +88,10 @@ resource "aws_iam_role_policy" "runtime" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "WriteJobLogs"
-        Effect = "Allow"
-        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = flatten([
-          for g in aws_cloudwatch_log_group.glue : [g.arn, "${g.arn}:*"]
-        ])
+        Sid      = "WriteJobLogs"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = flatten([for arn in var.log_group_arns : [arn, "${arn}:*"]])
       },
       {
         Sid      = "ListOwnArtifacts"

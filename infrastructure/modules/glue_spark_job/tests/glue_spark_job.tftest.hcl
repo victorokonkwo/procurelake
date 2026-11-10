@@ -2,9 +2,6 @@ mock_provider "aws" {
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::123456789012:role/procurelake-dev-test-job" }
   }
-  mock_resource "aws_cloudwatch_log_group" {
-    defaults = { arn = "arn:aws:logs:ca-central-1:123456789012:log-group:mock" }
-  }
   mock_data "aws_partition" {
     defaults = { partition = "aws" }
   }
@@ -21,6 +18,7 @@ variables {
   kms_key_arn             = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
   data_access_policy_json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
   job_arguments           = { "--datalake-formats" = "iceberg" }
+  log_group_arns          = ["arn:aws:logs:ca-central-1:123456789012:log-group:/aws-glue/jobs/error"]
 }
 
 run "job_runs_one_writer_without_retries_or_bookmarks" {
@@ -48,7 +46,7 @@ run "wheel_is_content_addressed_and_installed_without_dependency_resolution" {
   command = apply
 
   assert {
-    condition     = aws_s3_object.wheel.key == "glue/wheels/${filesha256("tests/fixtures/procurelake-0.0.0-py3-none-any.whl")}/procurelake-0.0.0-py3-none-any.whl"
+    condition     = aws_s3_object.wheel.key == "glue/wheels/procurelake-dev-test-job/${filesha256("tests/fixtures/procurelake-0.0.0-py3-none-any.whl")}/procurelake-0.0.0-py3-none-any.whl"
     error_message = "Wheel key must contain the wheel's SHA-256."
   }
   assert {
@@ -77,8 +75,8 @@ run "role_is_trusted_by_glue_in_this_account_only" {
     error_message = "No other principal may assume the job role."
   }
   assert {
-    condition     = alltrue([for g in aws_cloudwatch_log_group.glue : g.retention_in_days == 30])
-    error_message = "Glue log groups must have a retention period."
+    condition     = contains(flatten([for st in jsondecode(aws_iam_role_policy.runtime.policy).Statement : flatten([st.Resource])]), "arn:aws:logs:ca-central-1:123456789012:log-group:/aws-glue/jobs/error:*")
+    error_message = "The job may write only to the given Glue log groups."
   }
 }
 

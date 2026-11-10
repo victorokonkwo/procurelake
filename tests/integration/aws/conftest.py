@@ -28,6 +28,7 @@ REQUIRED = [
     "PROCURELAKE_DEV_BRONZE_DATABASE",
     "PROCURELAKE_DEV_SILVER_DATABASE",
     "PROCURELAKE_DEV_GOLD_DATABASE",
+    "PROCURELAKE_DEV_CDC_CHECKPOINT_TABLE",
 ]
 EVIDENCE_PATH = Path(__file__).resolve().parents[3] / "build" / "evidence" / "aws_integration.json"
 

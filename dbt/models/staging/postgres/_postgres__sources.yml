@@ -4,8 +4,10 @@ sources:
   - name: silver
     description: >-
       Silver Apache Iceberg tables built from consistent PostgreSQL snapshots by the Glue job
-      procurelake-<env>-bronze-to-silver (ADR 0024, ADR 0025). One row per source primary key;
-      keys deleted at the source are removed. Tenants are fictional and synthetic.
+      procurelake-<env>-bronze-to-silver (ADR 0024, ADR 0025) and kept current by CDC
+      (procurelake-<env>-apply-cdc, ADR 0028). One row per source primary key; a key deleted at
+      the source is a tombstone (_is_deleted = true), filtered out in staging. Tenants are
+      fictional and synthetic.
     # Glue database holding the Silver Iceberg tables (built by the Glue job, ADR 0025).
     schema: "{{ env_var('PROCURELAKE_SILVER_SCHEMA', 'procurelake_dev_silver') }}"
     meta:

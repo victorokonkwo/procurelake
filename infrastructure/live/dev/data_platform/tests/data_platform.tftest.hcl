@@ -5,6 +5,9 @@ mock_provider "aws" {
   mock_resource "aws_cloudwatch_log_group" {
     defaults = { arn = "arn:aws:logs:ca-central-1:123456789012:log-group:mock" }
   }
+  mock_resource "aws_dynamodb_table" {
+    defaults = { arn = "arn:aws:dynamodb:ca-central-1:123456789012:table/procurelake-dev-cdc-checkpoints" }
+  }
   mock_data "aws_partition" {
     defaults = { partition = "aws" }
   }
@@ -77,5 +80,32 @@ run "silver_job_cannot_delete_bronze" {
       ]
     ]))
     error_message = "No wildcard-only resources."
+  }
+}
+
+run "cdc_job_uses_the_checkpoint_table_and_cannot_delete_bronze" {
+  command = apply
+
+  assert {
+    condition     = module.apply_cdc.job_arguments_for_test["--checkpoint-table"] == "procurelake-dev-cdc-checkpoints" && output.apply_cdc_job_name == "procurelake-dev-apply-cdc"
+    error_message = "The CDC job must use the checkpoint table."
+  }
+  assert {
+    condition     = aws_dynamodb_table.cdc_checkpoints.deletion_protection_enabled && aws_dynamodb_table.cdc_checkpoints.server_side_encryption[0].enabled && aws_dynamodb_table.cdc_checkpoints.point_in_time_recovery[0].enabled
+    error_message = "Checkpoints must be protected from deletion, encrypted and recoverable."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(local.apply_cdc_policy).Statement :
+    s.Effect == "Deny" && contains(s.Action, "s3:DeleteObject") && contains(s.Resource, "arn:aws:s3:::procurelake-dev-raw-123456789012-ca-central-1/bronze/*")])
+    error_message = "The CDC job role must be denied Bronze deletes."
+  }
+  assert {
+    condition = alltrue([for s in jsondecode(local.apply_cdc_policy).Statement :
+    s.Effect == "Deny" || !contains(flatten([s.Resource]), "arn:aws:s3:::procurelake-dev-raw-123456789012-ca-central-1/bronze/postgres_cdc/*") || flatten([s.Action]) == ["s3:GetObject"]])
+    error_message = "The CDC job may only read DMS output in Bronze."
+  }
+  assert {
+    condition     = module.apply_cdc.job_arguments_for_test["--conf"] == module.bronze_to_silver.job_arguments_for_test["--conf"]
+    error_message = "Both Silver writers must use the same Iceberg catalog configuration."
   }
 }

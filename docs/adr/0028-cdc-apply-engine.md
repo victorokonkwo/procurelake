@@ -1,6 +1,6 @@
 # ADR 0028: CDC apply engine (ordering, tombstones, checkpoint and lease)
 
-- **Status:** Accepted (the engine; its Glue deployment and the live C5 gate follow)
+- **Status:** Accepted. Deployed 2026-11-10 (Glue `procurelake-<env>-apply-cdc`, DynamoDB `procurelake-<env>-cdc-checkpoints`); the live C5 gate follows
 - **Date:** 2026-11-10
 - **Implementation:** `src/procurelake/cdc/{apply,checkpoint,job}.py`, `src/procurelake/lakehouse/silver/{transform,writer}.py`
 
@@ -68,8 +68,18 @@ must prevent overlapping writers. On 2026-11-10 the owner decided that CDC appli
     same-transaction ordering, held keys, the quality gate, full-load tombstoning, snapshot
     refusal, checkpoint advance, and crash-and-replay.
   - 3 checkpoint and lease tests.
-- **Remaining for C5:**
-  - a DynamoDB table and a Glue `apply_cdc` job (Terraform)
-  - a dbt staging filter on `_is_deleted`, once the deployed Silver tables carry the CDC columns
-  - full-load completeness from DMS table statistics
-  - then a live session measured against the 15-minute gate
+- **Deployment (`live/dev/data_platform`):**
+  - The DynamoDB checkpoint table is pay-per-request, KMS-encrypted, with point-in-time recovery
+    and deletion protection. It outlives the disposable CDC stack.
+  - The Glue job `apply_cdc` has a least-privilege role: it reads `bronze/postgres_cdc/*`, writes
+    Silver and `quarantine/silver_cdc/*`, uses the checkpoint table and three DMS describe calls,
+    and is denied Bronze deletes.
+  - Full-load completeness comes from DMS table statistics (`Table completed`) when a task ARN is
+    passed.
+- **Gold:** dbt staging filters `_is_deleted`, and Gold rows carry `source_sequence`, so a Gold
+  metric traces to the exact DMS Parquet row. Evidence: `docs/evidence/sprint1-week5-cdc-silver-gold-live.md`.
+- **Shared Glue resources** fixed while adding a second job: the account-wide Glue log groups
+  moved from the job module to the root (with `moved` blocks), and each job's wheel has its own
+  S3 key.
+- **Remaining for C5:** a live session (CDC stack up, workload, `make cdc-apply`, `make dbt-build`)
+  timed against the 15-minute gate.

@@ -11,3 +11,5 @@ select
     {{ utc('updated_at') }} as updated_at,
     {{ lineage_columns() }}
 from {{ source('silver', 'silver_awards') }}
+-- CDC tombstones (ADR 0028) are deleted at the source: Gold never shows them.
+where not coalesce(_is_deleted, false)

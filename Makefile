@@ -177,6 +177,12 @@ cdc-workload: ## Apply the CDC workload to the RDS source (SEED=7 OPS=40); chang
 	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
 	  --seed $(or $(SEED_WL),7) --operations $(or $(OPS),40)
 
+.PHONY: cdc-apply
+cdc-apply: ## Run the CDC apply Glue job (Bronze DMS files -> Silver) and wait; uses the DMS task if dev/cdc is up
+	uv run python scripts/aws/run_glue_job.py \
+	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw apply_cdc_job_name) \
+	  $$(T=$$($(CDCOUT) -raw replication_task_arn 2>/dev/null); [ "$${T#arn:}" != "$$T" ] && echo "--arg=--dms-task-arn=$$T")
+
 .PHONY: cdc-down
 cdc-down: ## Destroy the dev/cdc stack (asks for confirmation; Bronze data and state are kept)
 	terraform -chdir=$(CDC_TF) destroy -input=true -var enable_dms=true
@@ -193,6 +199,7 @@ test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evide
 	PROCURELAKE_DEV_BRONZE_DATABASE=$$($(TFOUT) -raw bronze_database_name) \
 	PROCURELAKE_DEV_SILVER_DATABASE=$$($(TFOUT) -raw silver_database_name) \
 	PROCURELAKE_DEV_GOLD_DATABASE=$$($(TFOUT) -raw gold_database_name) \
+	PROCURELAKE_DEV_CDC_CHECKPOINT_TABLE=$$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_checkpoint_table_name) \
 	uv run pytest -m aws -v --junitxml=build/test-results/aws-integration.xml tests/integration/aws
 
 .PHONY: test-unit
