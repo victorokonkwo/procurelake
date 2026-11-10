@@ -36,18 +36,6 @@ AWS (`ca-central-1`) · S3 · Apache Iceberg · AWS Glue (Spark + Data Catalog) 
 
 Synthetic tenants are clearly labeled and are **not** real SOVRA customers.
 
-## Documentation
-| Document | Purpose |
-|---|---|
-| `docs/implementation-plan.md` | 10-week roadmap, work packages, completion gates, acceptance tests |
-| `docs/architecture/overview.md` | Target architecture, architectural decisions, environments, storage layout |
-| `docs/architecture/data_model.md` | OLTP schema, Bronze/Silver/Gold contracts, Gold models |
-| `docs/architecture/repository_structure.md` | Target monorepo layout and module boundaries |
-| `docs/operations/slos_and_observability.md` | SLIs/targets, monitoring components, cost controls |
-| `docs/adr/README.md` | Architecture decision log |
-| `docs/open-questions.md` | Decisions not yet made |
-| `AGENTS.md` / `CLAUDE.md` | Rules for AI coding agents |
-
 ## Getting started (local)
 Prerequisites: Docker, [uv](https://docs.astral.sh/uv/), make.
 
