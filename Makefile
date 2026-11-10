@@ -136,6 +136,16 @@ BUCKET = $$($(TFOUT) -json bucket_names | uv run python -c "import sys,json;prin
 # dbt Gold (ADR 0026): runs as the data-engineer role with temporary credentials.
 DBT_DIRS = --project-dir dbt --profiles-dir dbt
 
+TERRAVISION := uvx --from terravision==0.56.1 terravision
+DIAGRAMS_DIR := docs/architecture/diagrams
+
+.PHONY: diagrams
+diagrams: ## Render the dev architecture diagram (TerraVision; needs Graphviz, no AWS)
+	@cd $(DIAGRAMS_DIR) && for f in png svg; do \
+	  $(TERRAVISION) draw --source dev-platform.tvg.json --annotate dev-platform.terravision.yml \
+	    --format $$f --outfile dev-platform >/dev/null && mv dev-platform.dot.$$f dev-platform.$$f; done
+	@echo "Wrote $(DIAGRAMS_DIR)/dev-platform.png and .svg"
+
 .PHONY: dbt-parse
 dbt-parse: ## dbt parse (offline; no AWS access)
 	PROCURELAKE_DBT_S3_STAGING_DIR=s3://example-bucket/athena_results/ \

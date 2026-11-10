@@ -1,0 +1,79 @@
+# TerraVision annotations for dev-platform.tvg.json (format 0.3).
+# Render: make diagrams. Graph files accept title, flows, connect (labels only) and update.
+format: 0.3
+title: "ProcureLake dev (ca-central-1): sources to Bronze, Silver and Gold"
+
+connect:
+  tv_aws_server.usaspending_api:
+    - tv_aws_client.ingestion_cli: "Settled daily awards (HTTPS)"
+  tv_aws_client.ingestion_cli:
+    - aws_iam_role.ingestion: "Assumes role"
+  aws_iam_role.ingestion:
+    - aws_s3_bucket.raw: "bronze/usaspending/ + manifest"
+  aws_rds_postgres.source:
+    - aws_dms_replication_instance.cdc: "Full load + CDC (logical replication)"
+  aws_vpc_endpoint.secretsmanager:
+    - aws_secretsmanager_secret.dms_source: "DMS source credentials"
+  aws_vpc_endpoint.s3:
+    - aws_s3_bucket.raw: "bronze/postgres_cdc/ (Parquet)"
+  aws_s3_bucket.raw:
+    - aws_glue_job.bronze_to_silver: "Snapshot batches"
+    - aws_glue_job.apply_cdc: "New DMS change files"
+  aws_glue_job.apply_cdc:
+    - aws_dynamodb_table.cdc_checkpoints: "Lease + checkpoint"
+    - aws_s3_bucket.lake: "MERGE into Silver Iceberg"
+  aws_glue_job.bronze_to_silver:
+    - aws_s3_bucket.lake: "Silver Iceberg"
+  aws_s3_bucket.lake:
+    - aws_glue_catalog_database.silver: "Iceberg metadata"
+  aws_glue_catalog_database.silver:
+    - aws_athena_workgroup.engineering: "dbt reads Silver"
+  aws_athena_workgroup.engineering:
+    - aws_glue_catalog_database.gold: "dbt builds Gold (lake/gold/)"
+    - aws_s3_bucket.artifacts: "Query results"
+  aws_iam_role.data_engineer:
+    - aws_athena_workgroup.engineering: "make dbt-build"
+
+update:
+  aws_vpc.cdc:
+    cidr_block: "10.40.0.0/16"
+  aws_subnet.public~1:
+    cidr_block: "10.40.0.0/24"
+  aws_subnet.public~2:
+    cidr_block: "10.40.1.0/24"
+  aws_subnet.private~1:
+    cidr_block: "10.40.10.0/24"
+  aws_subnet.private~2:
+    cidr_block: "10.40.11.0/24"
+
+flows:
+  cdc:
+    description: "PostgreSQL CDC to Silver"
+    steps:
+      - resource: aws_rds_postgres.source
+        xlabel: "Change"
+        detail: "Writes to the RDS PostgreSQL 17 source are captured by logical replication (dev/cdc, disposable)"
+      - resource: aws_dms_replication_instance.cdc
+        xlabel: "Replicate"
+        detail: "The DMS full-load-and-CDC task reads the source with credentials from Secrets Manager"
+      - resource: "aws_vpc_endpoint.s3 -> aws_s3_bucket.raw"
+        xlabel: "Land"
+        detail: "DMS writes immutable Parquet change files to raw/bronze/postgres_cdc/ through the S3 gateway endpoint"
+      - resource: aws_glue_job.apply_cdc
+        xlabel: "Apply"
+        detail: "The apply-cdc Glue 5.1 job takes a DynamoDB lease, MERGEs changes into Silver Iceberg, then advances the checkpoint"
+  batch:
+    description: "Public reference data and snapshots"
+    steps:
+      - resource: tv_aws_client.ingestion_cli
+        xlabel: "Ingest"
+        detail: "make ingest-usaspending pulls one settled day and writes raw payload + manifest to Bronze as the ingestion role"
+      - resource: aws_glue_job.bronze_to_silver
+        xlabel: "Validate"
+        detail: "The bronze-to-silver Glue job applies the latest complete snapshot batch; rejects go to raw/quarantine/"
+  gold:
+    description: "Gold data products"
+    steps:
+      - resource: aws_athena_workgroup.engineering
+        xlabel: "Build"
+        detail: "dbt-athena builds Gold Iceberg models and tests on the engineering workgroup; results land in artifacts/athena_results/"

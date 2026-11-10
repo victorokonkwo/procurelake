@@ -2,6 +2,8 @@
 
 ## 1. End-to-end flow
 
+This is the target architecture. For a diagram of what is deployed in dev today, drawn from the Terraform with TerraVision, see [`diagrams/`](diagrams/README.md) (`diagrams/dev-platform.png`).
+
 ```
 SOURCE SYSTEMS
   PostgreSQL (transactions)      Public APIs / CSV (contracts)      Documents (PDFs)

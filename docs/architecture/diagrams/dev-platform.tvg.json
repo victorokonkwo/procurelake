@@ -1,0 +1,87 @@
+{
+  "tv_aws_onprem.operator_workstation": [
+    "tv_aws_client.ingestion_cli"
+  ],
+  "tv_aws_server.usaspending_api": [
+    "tv_aws_client.ingestion_cli"
+  ],
+  "tv_aws_client.ingestion_cli": [
+    "aws_iam_role.ingestion"
+  ],
+  "aws_iam_role.ingestion": [
+    "aws_s3_bucket.raw"
+  ],
+  "aws_vpc.cdc": [
+    "tv_aws_az.cac1_az1",
+    "tv_aws_az.cac1_az2",
+    "aws_internet_gateway.igw"
+  ],
+  "tv_aws_az.cac1_az1": [
+    "aws_subnet.public~1",
+    "aws_subnet.private~1"
+  ],
+  "tv_aws_az.cac1_az2": [
+    "aws_subnet.public~2",
+    "aws_subnet.private~2"
+  ],
+  "aws_subnet.public~1": [
+    "aws_rds_postgres.source"
+  ],
+  "aws_subnet.private~1": [
+    "aws_dms_replication_instance.cdc",
+    "aws_vpc_endpoint.secretsmanager"
+  ],
+  "aws_subnet.private~2": [
+    "aws_vpc_endpoint.s3"
+  ],
+  "aws_rds_postgres.source": [
+    "aws_dms_replication_instance.cdc"
+  ],
+  "aws_dms_replication_instance.cdc": [
+    "aws_vpc_endpoint.secretsmanager",
+    "aws_vpc_endpoint.s3"
+  ],
+  "aws_vpc_endpoint.secretsmanager": [
+    "aws_secretsmanager_secret.dms_source"
+  ],
+  "aws_vpc_endpoint.s3": [
+    "aws_s3_bucket.raw"
+  ],
+  "aws_s3_bucket.raw": [
+    "aws_glue_job.bronze_to_silver",
+    "aws_glue_job.apply_cdc"
+  ],
+  "aws_glue_job.apply_cdc": [
+    "aws_dynamodb_table.cdc_checkpoints",
+    "aws_s3_bucket.lake"
+  ],
+  "aws_glue_job.bronze_to_silver": [
+    "aws_s3_bucket.lake"
+  ],
+  "aws_s3_bucket.lake": [
+    "aws_glue_catalog_database.silver"
+  ],
+  "aws_glue_catalog_database.silver": [
+    "aws_athena_workgroup.engineering"
+  ],
+  "aws_athena_workgroup.engineering": [
+    "aws_glue_catalog_database.gold",
+    "aws_s3_bucket.artifacts"
+  ],
+  "tv_aws_users.data_engineer": [
+    "aws_iam_role.data_engineer"
+  ],
+  "aws_iam_role.data_engineer": [
+    "aws_athena_workgroup.engineering"
+  ],
+  "aws_group.shared_services": [
+    "aws_kms_key.data",
+    "aws_cloudwatch_log_group.glue_jobs"
+  ],
+  "aws_glue_catalog_database.gold": [],
+  "aws_dynamodb_table.cdc_checkpoints": [],
+  "aws_secretsmanager_secret.dms_source": [],
+  "aws_internet_gateway.igw": [],
+  "aws_subnet.public~2": [],
+  "aws_s3_bucket.products": []
+}

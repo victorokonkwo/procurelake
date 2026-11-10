@@ -22,6 +22,18 @@ A fictional procurement SaaS company serves multiple government agencies. Procur
 - Can a tenant access only its own authorized records?
 - Can contract documents be turned into validated, AI-ready structured data?
 
+## Architecture
+
+What the Terraform deploys in dev (`ca-central-1`) today. The numbered steps follow the CDC, batch and Gold data flows; the legend is at the bottom of the image. Drawn with [TerraVision](https://github.com/patrickchugh/terravision) and regenerated with `make diagrams`.
+
+<p align="center">
+  <a href="docs/architecture/diagrams/dev-platform.svg">
+    <img src="docs/architecture/diagrams/dev-platform.png" alt="ProcureLake dev architecture: RDS PostgreSQL to DMS to S3 Bronze, Glue jobs to Silver Iceberg, dbt on Athena to Gold" width="560">
+  </a>
+</p>
+
+`dev/cdc` (RDS, DMS, VPC) is disposable and runs only during CDC sessions. Lake Formation, Step Functions, Textract and Bedrock are not deployed yet; [`docs/architecture/overview.md`](docs/architecture/overview.md) describes the full target architecture, and [`docs/architecture/diagrams/`](docs/architecture/diagrams/README.md) has per-stack diagrams and notes on how the combined one is built.
+
 ## Core stack
 AWS (`ca-central-1`) · S3 · Apache Iceberg · AWS Glue (Spark + Data Catalog) · Amazon Athena (engine v3) · dbt (`dbt-athena`) · AWS DMS · RDS PostgreSQL · Step Functions · EventBridge · DynamoDB · Lake Formation · IAM · KMS · Secrets Manager · CloudWatch · SNS · Textract · Bedrock · Terraform · GitHub Actions (OIDC) · Python (uv, Ruff, pytest, Pydantic) · Docker.
 
