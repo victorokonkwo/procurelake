@@ -75,6 +75,7 @@ TF_DIRS := infrastructure/modules/kms infrastructure/modules/budgets infrastruct
            infrastructure/modules/cdc_network infrastructure/modules/rds_postgresql \
            infrastructure/modules/dms_s3_cdc infrastructure/live/dev/cdc \
            infrastructure/modules/public_network infrastructure/modules/dbt_runner \
+           infrastructure/live/dev/security \
            infrastructure/bootstrap infrastructure/live/dev/foundation infrastructure/live/dev/data_platform
 
 .PHONY: tf-fmt
