@@ -59,3 +59,14 @@ run "cdc_freshness_uses_the_15_minute_gate" {
     error_message = "Freshness alarms above 900 s on the worst table."
   }
 }
+
+run "dashboard_metric_rows_are_arrays" {
+  command = apply
+
+  # PutDashboard rejects a widget whose `metrics` is not an array of arrays (live, 2026-11-10).
+  assert {
+    condition = alltrue([for w in jsondecode(aws_cloudwatch_dashboard.operations.dashboard_body).widgets :
+    w.type != "metric" || alltrue([for row in w.properties.metrics : can(length(row)) && !can(regex("", row))])])
+    error_message = "Every metric widget row must be an array."
+  }
+}

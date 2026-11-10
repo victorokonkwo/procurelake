@@ -147,10 +147,11 @@ resource "aws_cloudwatch_dashboard" "operations" {
           region = var.region
           stat   = "Sum"
           period = 300
-          metrics = flatten([for k, arn in local.machines : [
-            ["AWS/States", "ExecutionsSucceeded", "StateMachineArn", arn, { label = "${k} ok" }],
-            ["AWS/States", "ExecutionsFailed", "StateMachineArn", arn, { label = "${k} failed" }],
-          ]])
+          # One row per metric (concat, not flatten: flatten would also flatten each row).
+          metrics = concat(
+            [for k, arn in local.machines : ["AWS/States", "ExecutionsSucceeded", "StateMachineArn", arn, { label = "${k} ok" }]],
+            [for k, arn in local.machines : ["AWS/States", "ExecutionsFailed", "StateMachineArn", arn, { label = "${k} failed" }]],
+          )
         }
       },
       {
