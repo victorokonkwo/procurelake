@@ -31,7 +31,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 22. ~~Actual S3 bucket names~~ **Resolved: ADR 0019** (`procurelake-<env>-<role>-<account>-<region>`).
 27. **Least-privilege deploy role.** `procurelake-github-deploy-dev` uses `AdministratorAccess` (scoped by trust to the GitHub `dev` environment only). Replace it with a scoped policy in the Week 10 security review.
 28. **S3 Object Lock for Bronze.** Today immutability relies on versioning plus an IAM delete denial. Decide whether to adopt Object Lock, which must be enabled when a bucket is created, before any production use.
-29. **AWS account and credentials for `dev`.** Needed to run `terraform plan`/`apply` and meet the Day 3 completion gate.
+29. **Human AWS access.** Dev was deployed with IAM user `victoroko` (a long-lived access key plus temporary `AdministratorAccess`). Move to IAM Identity Center (SSO), remove the user's `AdministratorAccess`, and rotate or delete the access key.
 
 ## Naming inconsistencies between the source documents
 23. ~~Cycle-time mart name~~ **Resolved: ADR 0017** (`mart_procurement_cycle_time`).

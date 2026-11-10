@@ -20,6 +20,13 @@ terraform {
       version = ">= 6.72.0, < 7.0.0"
     }
   }
+
+  # First apply ran with local state. The state was then migrated into the bucket this stack
+  # created (infrastructure/README.md, step 4). Use the same git-ignored backend.hcl as the
+  # live roots: terraform init -backend-config=../live/dev/foundation/backend.hcl
+  backend "s3" {
+    key = "bootstrap/terraform.tfstate"
+  }
 }
 
 provider "aws" {

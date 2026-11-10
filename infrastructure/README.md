@@ -48,11 +48,18 @@ IAM Identity Center session if you can (`aws configure sso`), not long-lived acc
    terraform -chdir=infrastructure/live/dev/foundation apply foundation.tfplan
    ```
 
-4. **(Recommended) Move the bootstrap state into the state bucket**, so it isn't only on one laptop.
-   Add `backend "s3" { key = "bootstrap/terraform.tfstate" }` to the `terraform` block in
-   `bootstrap/main.tf`, then run
-   `terraform -chdir=infrastructure/bootstrap init -migrate-state -backend-config=../live/dev/foundation/backend.hcl`.
-   Until you do this, `infrastructure/bootstrap/terraform.tfstate` is the only copy. Back it up.
+4. **Move the bootstrap state into the state bucket.** `bootstrap/main.tf` already declares
+   `backend "s3" { key = "bootstrap/terraform.tfstate" }` (it was migrated on 2026-11-10). To work
+   on bootstrap from a fresh clone, run
+   `terraform -chdir=infrastructure/bootstrap init -backend-config=../live/dev/foundation/backend.hcl`.
+   For a brand-new account, comment out the backend block for the first apply, then run
+   `init -migrate-state` with the same flag.
+
+## Current deployment (dev)
+
+Region `ca-central-1`, deployed 2026-11-10 to the dev account (its ID is in the git-ignored
+tfvars). Both stacks' state is in `s3://procurelake-tfstate-<account>-ca-central-1/` under
+`bootstrap/` and `dev/foundation/`.
 
 ## Safety properties
 
