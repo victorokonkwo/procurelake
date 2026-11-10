@@ -264,7 +264,7 @@ The platform isn't complete until all of these pass, with automated integration 
 |---|---|---|
 | 1 ✅ | Initialize the repository and ADRs; local Docker PostgreSQL; database schema | All source tables exist with constraints. **Done 2026-11-10:** 8 tables in schema `procurement`, verified by 39 passing tests (ADRs 0001–0012, 0015–0017) |
 | 2 ✅ | Synthetic procurement generator with two tenants | Repeatable seeded dataset with valid relationships. **Done 2026-11-10:** seed 42 gives fingerprint `350d064e…` with 5,702 rows across both tenants. Loads under every DB constraint and round-trips exactly. 75 tests (ADR 0018) |
-| 3 | Terraform backend, AWS authentication, KMS, buckets, IAM, budget alerts | `terraform plan` succeeds; foundation deploys |
+| 3 ◐ | Terraform backend, AWS authentication, KMS, buckets, IAM, budget alerts | `terraform plan` succeeds; foundation deploys. **Code complete 2026-11-10** (ADR 0019): `terraform validate` passes and 21 mock-provider tests pass. **Gate NOT met:** not planned or deployed yet because no AWS credentials were available. Steps: `infrastructure/README.md` |
 | 4 | First public API/CSV ingestion with a manifest | Raw source data and metadata land in S3 |
 | 5 | Glue Catalog and Athena; first integration tests | Bronze data is queryable; test evidence recorded |
 
@@ -274,7 +274,7 @@ The sprint should end with a reproducible commit and a working foundation, not j
 - [ ] Create the GitHub repository and branch protection (local git repo exists; the GitHub repo is the owner's call)
 - [x] Initialize the Python package, `pyproject.toml`, and `uv.lock`
 - [ ] Configure pytest, Ruff, pre-commit, and CI (pytest and Ruff done; pre-commit and CI not yet)
-- [ ] Set up Terraform bootstrap and the dev environment
+- [ ] Set up Terraform bootstrap and the dev environment (code written and tested offline; deploy pending AWS credentials)
 - [x] Create the local PostgreSQL Docker Compose setup and schema
 - [ ] Create initial source contracts and configuration files
 - [x] Implement the synthetic procurement data generator

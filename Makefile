@@ -69,6 +69,31 @@ format: ## Apply Ruff formatting and autofixes
 	uv run ruff format .
 	uv run ruff check --fix .
 
+TF_DIRS := infrastructure/modules/kms infrastructure/modules/budgets infrastructure/modules/s3_lakehouse \
+           infrastructure/modules/iam infrastructure/bootstrap infrastructure/live/dev/foundation
+
+.PHONY: tf-fmt
+tf-fmt: ## terraform fmt check (recursive)
+	terraform fmt -check -recursive infrastructure
+
+.PHONY: tf-validate
+tf-validate: ## terraform init (no backend) + validate for every module and root (offline)
+	@set -e; for d in $(TF_DIRS); do echo "== $$d"; terraform -chdir=$$d init -backend=false -input=false >/dev/null; terraform -chdir=$$d validate; done
+
+.PHONY: tf-test
+tf-test: tf-validate ## terraform test with a mock AWS provider (offline, creates nothing)
+	@set -e; for d in $(TF_DIRS); do echo "== $$d"; terraform -chdir=$$d test; done
+
+.PHONY: bootstrap-plan
+bootstrap-plan: ## Plan the bootstrap stack (needs AWS credentials + terraform.tfvars)
+	terraform -chdir=infrastructure/bootstrap init -input=false
+	terraform -chdir=infrastructure/bootstrap plan -input=false -out=bootstrap.tfplan
+
+.PHONY: dev-foundation-plan
+dev-foundation-plan: ## Plan dev/foundation (needs AWS credentials, backend.hcl, terraform.tfvars)
+	terraform -chdir=infrastructure/live/dev/foundation init -input=false -backend-config=backend.hcl
+	terraform -chdir=infrastructure/live/dev/foundation plan -input=false -out=foundation.tfplan
+
 .PHONY: test-unit
 test-unit: ## Unit tests (no services required)
 	uv run pytest tests/unit

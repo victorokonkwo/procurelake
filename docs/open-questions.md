@@ -4,11 +4,11 @@ These are decisions the planning documents **do not make**. Agents and contribut
 
 ## Tooling and versions
 1. ~~Python version and Glue runtime~~ **Resolved: ADR 0015** (Glue 5.1, Python 3.11, PostgreSQL 17).
-2. **Pinned versions** for dbt-core, dbt-athena, Terraform, the AWS provider, and dbt packages (`packages.yml`). (Python dependencies are pinned in `uv.lock`.)
+2. **Pinned versions** for dbt-core, dbt-athena, and dbt packages (`packages.yml`). (Python dependencies are pinned in `uv.lock`. Terraform and the AWS provider are pinned in ADR 0019.)
 3. **Iceberg integration in Glue:** which Glue job configuration is used to read and write Iceberg tables (check the current Glue docs for the chosen Glue version).
 4. **Local Glue testing approach:** what `docker/Dockerfile.glue-tests` is based on.
 5. **Security scanning tools** for `ci-security.yml` (Python, Terraform, and secrets scanning).
-6. **Terraform remote state backend:** the bucket and the locking mechanism created by `infrastructure/bootstrap/`.
+6. ~~Terraform remote state backend~~ **Resolved: ADR 0019** (S3 bucket, native `use_lockfile` locking).
 
 ## Data model
 7. ~~Full OLTP column lists~~ **Resolved: ADR 0016.**
@@ -28,7 +28,10 @@ These are decisions the planning documents **do not make**. Agents and contribut
 19. **Human review queue:** where it lives and how approvals are recorded.
 20. **BI / dashboard tool** for the tenant and admin dashboards.
 21. **Snapshot retention period** for Iceberg `VACUUM`.
-22. **Actual S3 bucket names.** They must be globally unique; the names in the docs are illustrative.
+22. ~~Actual S3 bucket names~~ **Resolved: ADR 0019** (`procurelake-<env>-<role>-<account>-<region>`).
+27. **Least-privilege deploy role.** `procurelake-github-deploy-dev` uses `AdministratorAccess` (scoped by trust to the GitHub `dev` environment only). Replace it with a scoped policy in the Week 10 security review.
+28. **S3 Object Lock for Bronze.** Today immutability relies on versioning plus an IAM delete denial. Decide whether to adopt Object Lock, which must be enabled when a bucket is created, before any production use.
+29. **AWS account and credentials for `dev`.** Needed to run `terraform plan`/`apply` and meet the Day 3 completion gate.
 
 ## Naming inconsistencies between the source documents
 23. ~~Cycle-time mart name~~ **Resolved: ADR 0017** (`mart_procurement_cycle_time`).
