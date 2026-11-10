@@ -1,0 +1,44 @@
+# Secrets and local environment
+.env
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+
+# Terraform: never commit state or local provider caches
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# dbt generated artifacts
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# Data: never commit raw extracts or downloaded source data
+data/
+*.parquet
+*.csv.gz
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+AGENTS.md
+CLAUDE.md
