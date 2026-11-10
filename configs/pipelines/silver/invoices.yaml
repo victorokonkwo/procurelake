@@ -1,0 +1,14 @@
+source_table: invoices
+silver_table: silver_invoices
+partition_by: [tenant_id]
+max_reject_ratio: 0.01
+rules:
+  - {name: invoice_amount_positive, sql: "invoice_amount > 0"}
+  - {name: paid_within_invoice, sql: "paid_amount >= 0 AND paid_amount <= invoice_amount"}
+  - {name: currency_code_format, sql: "currency_code RLIKE '^[A-Z]{3}$'"}
+  - name: payment_state_consistent
+    sql: >-
+      (payment_status = 'pending' AND paid_amount = 0 AND paid_at IS NULL)
+      OR (payment_status = 'partially_paid' AND paid_amount > 0 AND paid_amount < invoice_amount AND paid_at IS NOT NULL)
+      OR (payment_status = 'paid' AND paid_amount = invoice_amount AND paid_at IS NOT NULL)
+      OR (payment_status = 'cancelled' AND paid_amount = 0 AND paid_at IS NULL)

@@ -1,0 +1,8 @@
+# Silver pipeline: tenants -> silver_tenants. Rules mirror the CHECK constraints in V0001.
+source_table: tenants
+silver_table: silver_tenants
+partition_by: []
+max_reject_ratio: 0.0
+rules:
+  - {name: tenant_id_format, sql: "tenant_id RLIKE '^tenant_[a-z][a-z0-9_]*$'"}
+  - {name: tenant_name_not_blank, sql: "trim(tenant_name) <> ''"}

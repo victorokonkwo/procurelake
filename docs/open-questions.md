@@ -6,7 +6,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 1. ~~Python version and Glue runtime~~ **Resolved: ADR 0015** (Glue 5.1, Python 3.11, PostgreSQL 17).
 2. **Pinned versions** for dbt-core, dbt-athena, and dbt packages (`packages.yml`). (Python dependencies are pinned in `uv.lock`. Terraform and the AWS provider are pinned in ADR 0019.)
 3. **Iceberg integration in Glue:** which Glue job configuration is used to read and write Iceberg tables (check the current Glue docs for the chosen Glue version).
-4. **Local Glue testing approach:** what `docker/Dockerfile.glue-tests` is based on.
+4. ~~Local Glue testing approach~~ **Resolved: ADR 0024** (local PySpark 3.5.6 + Iceberg 1.10.0 + Java 17, matching Glue 5.1; a live Glue run verifies the AWS side).
 5. **Security scanning tools** for `ci-security.yml` (Python dependency, Terraform/IaC, and full-history secrets scanning). The pre-commit hooks cover only private keys and AWS credentials in staged files.
 6. ~~Terraform remote state backend~~ **Resolved: ADR 0019** (S3 bucket, native `use_lockfile` locking).
 

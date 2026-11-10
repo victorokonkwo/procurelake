@@ -1,0 +1,7 @@
+source_table: purchase_orders
+silver_table: silver_purchase_orders
+partition_by: [tenant_id]
+max_reject_ratio: 0.01
+rules:
+  - {name: amount_positive, sql: "amount > 0"}
+  - {name: currency_code_format, sql: "currency_code RLIKE '^[A-Z]{3}$'"}

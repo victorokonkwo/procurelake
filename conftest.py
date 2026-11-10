@@ -1,4 +1,4 @@
-"""Fixtures for tests against the local PostgreSQL service.
+"""Shared fixtures for tests against the local PostgreSQL service (used by database/ and tests/).
 
 Each test session creates a throwaway database, applies all migrations to it with the real
 migration runner, and drops it afterwards. Each test runs inside a transaction that is
@@ -19,7 +19,7 @@ from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 from procurelake.common.postgres_migrations import apply_migrations
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
+MIGRATIONS_DIR = Path(__file__).resolve().parent / "database" / "postgres" / "migrations"
 
 
 def _base_dsn() -> str:

@@ -1,0 +1,6 @@
+source_table: agencies
+silver_table: silver_agencies
+partition_by: [tenant_id]
+max_reject_ratio: 0.01
+rules:
+  - {name: agency_name_not_blank, sql: "trim(agency_name) <> ''"}

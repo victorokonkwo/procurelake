@@ -108,7 +108,9 @@ class LocalLandingStore:
                 handle.write(data)
         except FileExistsError as exc:
             raise ObjectAlreadyExistsError(f"{path} already exists") from exc
-        return StoredObject(uri=path.as_uri(), key=key, size_bytes=len(data), sha256_hex=sha256_hex(data))
+        # Plain file:// URI: Path.as_uri() would percent-encode '=' in partition-style
+        # directories (ingestion_date=...), which Spark and Hadoop paths do not expect.
+        return StoredObject(uri=f"file://{path}", key=key, size_bytes=len(data), sha256_hex=sha256_hex(data))
 
     def get(self, key: str) -> bytes:
         return self._path(key).read_bytes()

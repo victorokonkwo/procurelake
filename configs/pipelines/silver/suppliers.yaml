@@ -1,0 +1,7 @@
+source_table: suppliers
+silver_table: silver_suppliers
+partition_by: [tenant_id]
+max_reject_ratio: 0.01
+rules:
+  - {name: supplier_name_not_blank, sql: "trim(supplier_name) <> ''"}
+  - {name: category_not_blank, sql: "trim(category) <> ''"}

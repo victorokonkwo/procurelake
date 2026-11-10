@@ -1,0 +1,7 @@
+source_table: awards
+silver_table: silver_awards
+partition_by: [tenant_id]
+max_reject_ratio: 0.01
+rules:
+  - {name: award_amount_positive, sql: "award_amount > 0"}
+  - {name: currency_code_format, sql: "currency_code RLIKE '^[A-Z]{3}$'"}

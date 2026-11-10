@@ -1,0 +1,8 @@
+source_table: solicitations
+silver_table: silver_solicitations
+partition_by: [tenant_id]
+max_reject_ratio: 0.01
+rules:
+  - {name: title_not_blank, sql: "trim(title) <> ''"}
+  - {name: published_when_past_draft, sql: "status IN ('draft', 'cancelled') OR published_at IS NOT NULL"}
+  - {name: closing_after_publish, sql: "closing_at IS NULL OR published_at IS NULL OR closing_at > published_at"}
