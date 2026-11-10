@@ -27,3 +27,8 @@ output "tenant_exports_state_machine_arn" {
   description = "Daily tenant exports state machine."
   value       = aws_sfn_state_machine.exports.arn
 }
+
+output "tenant_access_check_state_machine_arn" {
+  description = "Tenant access check, run after every dbt build."
+  value       = aws_sfn_state_machine.access_check.arn
+}

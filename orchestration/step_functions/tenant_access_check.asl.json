@@ -1,0 +1,78 @@
+{
+  "Comment": "Tenant access check (ADR 0030), run after every dbt build. Queries each tenant-facing mart as each synthetic tenant role. Fails, with an SNS alert, if a tenant lost access (a missing grant, filter or opt-in makes the query fail) or can see another tenant's rows.",
+  "StartAt": "ListChecks",
+  "States": {
+    "ListChecks": {
+      "Type": "Pass",
+      "Parameters": { "checks": ${checks_json} },
+      "Next": "CheckEach"
+    },
+    "CheckEach": {
+      "Type": "Map",
+      "ItemsPath": "$.checks",
+      "MaxConcurrency": 4,
+      "ItemProcessor": {
+        "ProcessorConfig": { "Mode": "INLINE" },
+        "StartAt": "QueryAsTenant",
+        "States": {
+          "QueryAsTenant": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::athena:startQueryExecution.sync",
+            "Credentials": { "RoleArn.$": "$.role_arn" },
+            "Parameters": {
+              "QueryString.$": "States.Format('SELECT count_if(tenant_id <> \\'{}\\') AS foreign_rows, count(*) AS total_rows FROM ${gold_database}.{}', $.tenant, $.mart)",
+              "WorkGroup.$": "$.workgroup",
+              "QueryExecutionContext": { "Database": "${gold_database}" }
+            },
+            "ResultSelector": { "query_execution_id.$": "$.QueryExecution.QueryExecutionId" },
+            "ResultPath": "$.query",
+            "Retry": [
+              { "ErrorEquals": ["Athena.TooManyRequestsException"], "IntervalSeconds": 10, "MaxAttempts": 3, "BackoffRate": 2 }
+            ],
+            "Next": "ReadResult"
+          },
+          "ReadResult": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::athena:getQueryResults",
+            "Credentials": { "RoleArn.$": "$.role_arn" },
+            "Parameters": { "QueryExecutionId.$": "$.query.query_execution_id" },
+            "ResultSelector": {
+              "foreign_rows.$": "$.ResultSet.Rows[1].Data[0].VarCharValue",
+              "total_rows.$": "$.ResultSet.Rows[1].Data[1].VarCharValue"
+            },
+            "ResultPath": "$.result",
+            "Next": "OnlyOwnRows"
+          },
+          "OnlyOwnRows": {
+            "Type": "Choice",
+            "Choices": [{ "Variable": "$.result.foreign_rows", "StringEquals": "0", "Next": "Isolated" }],
+            "Default": "ForeignRowsVisible"
+          },
+          "Isolated": { "Type": "Succeed" },
+          "ForeignRowsVisible": {
+            "Type": "Fail",
+            "Error": "ForeignRowsVisible",
+            "Cause": "A tenant role can read rows of another tenant: check the Lake Formation filters (dev/security)."
+          }
+        }
+      },
+      "ResultSelector": { "count.$": "States.ArrayLength($)" },
+      "ResultPath": "$.checked",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }],
+      "Next": "Succeeded"
+    },
+    "Succeeded": { "Type": "Succeed" },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${alerts_topic_arn}",
+        "Subject": "ProcureLake dev: tenant access check failed",
+        "Message.$": "States.Format('Execution {} failed. A tenant lost access to a mart or can see another tenant. Re-apply dev/security (-parallelism=1) after a full refresh. Error: {}', $$.Execution.Id, States.JsonToString($.error))"
+      },
+      "ResultPath": "$.notification",
+      "Next": "Failed"
+    },
+    "Failed": { "Type": "Fail", "Error": "TenantAccessCheckFailed", "Cause": "See the execution history and the SNS notification." }
+  }
+}

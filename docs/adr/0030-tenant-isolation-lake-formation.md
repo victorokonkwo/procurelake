@@ -83,5 +83,8 @@ So the owner approved an experiment first.
     `ConcurrentModificationException`.
 - Each merge rewrites the mart's rows in new Iceberg snapshots, so the marts' storage and
   snapshot count grow until table maintenance (`OPTIMIZE`/`VACUUM`, Week 8) runs.
-- Still open: the check after each run (alert if any filter, grant or opt-in is missing),
-  column-level controls, and a live run of the exports' SNS failure path.
+- Every `dbt_transformation` run ends with `tenant_access_check`, which queries every mart as
+  every tenant and fails with an SNS alert if access was lost or a foreign row is visible. A
+  dropped grant therefore cannot go unnoticed for longer than one run.
+- Still open: column-level controls, and live runs of the failure paths (export failure, check
+  failure).

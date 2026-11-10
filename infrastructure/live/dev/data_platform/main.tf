@@ -345,11 +345,13 @@ locals {
       Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
     }]
   })
-  sfn_prefix      = "arn:aws:states:${var.region}:${var.aws_account_id}"
-  dbt_machine     = "${local.name_prefix}-dbt-transformation"
-  cdc_machine     = "${local.name_prefix}-cdc-processing"
-  orchestrated    = var.dbt_image_digest != ""
-  events_rule_arn = "arn:aws:events:${var.region}:${var.aws_account_id}:rule"
+  sfn_prefix       = "arn:aws:states:${var.region}:${var.aws_account_id}"
+  dbt_machine      = "${local.name_prefix}-dbt-transformation"
+  access_check     = "${local.name_prefix}-tenant-access-check"
+  access_check_arn = "${local.sfn_prefix}:stateMachine:${local.access_check}"
+  cdc_machine      = "${local.name_prefix}-cdc-processing"
+  orchestrated     = var.dbt_image_digest != ""
+  events_rule_arn  = "arn:aws:events:${var.region}:${var.aws_account_id}:rule"
 }
 
 # dbt_transformation: run the dbt runner task and check its exit code.
@@ -382,6 +384,19 @@ resource "aws_iam_role_policy" "dbt_transformation" {
         Resource  = [module.dbt_runner.execution_role_arn, local.foundation.data_engineer_role_arn]
         Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
+      { Sid = "StartAccessCheck", Effect = "Allow", Action = "states:StartExecution", Resource = local.access_check_arn },
+      {
+        Sid      = "TrackAccessCheck"
+        Effect   = "Allow"
+        Action   = ["states:DescribeExecution", "states:StopExecution"]
+        Resource = "${local.sfn_prefix}:execution:${local.access_check}:*"
+      },
+      {
+        Sid      = "SyncRuleNested"
+        Effect   = "Allow"
+        Action   = ["events:PutTargets", "events:PutRule", "events:DescribeRule"]
+        Resource = "${local.events_rule_arn}/StepFunctionsGetEventsForStepFunctionsExecutionRule"
+      },
     ]
   })
 }
@@ -397,6 +412,8 @@ resource "aws_sfn_state_machine" "dbt_transformation" {
     subnet_a            = module.orchestration_network.subnet_ids[0]
     subnet_b            = module.orchestration_network.subnet_ids[1]
     security_group_id   = module.dbt_runner.security_group_id
+    # Created in dev/security, referenced by its fixed name (no remote-state cycle).
+    tenant_access_check_arn = local.access_check_arn
   })
   depends_on = [aws_iam_role_policy.dbt_transformation]
 }

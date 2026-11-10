@@ -14,8 +14,8 @@ repos:
       - id: check-toml
       - id: check-json
         # Terraform template with an unquoted list placeholder; rendered and checked in
-        # tests/unit/orchestration/test_tenant_exports_asl.py instead.
-        exclude: ^orchestration/step_functions/tenant_exports\.asl\.json$
+        # tests/unit/orchestration/test_tenant_*_asl.py instead.
+        exclude: ^orchestration/step_functions/tenant_(exports|access_check)\.asl\.json$
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ["--maxkb=1024"]

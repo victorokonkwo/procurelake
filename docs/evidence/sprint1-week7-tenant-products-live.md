@@ -70,12 +70,32 @@ the tenants. In each mart it sees both tenants, with counts equal to the data en
   on every plan: the principal-filtered ListPermissions adds `ALL`. The unfiltered listing shows
   `SELECT` only. The `permissions` drift is ignored.
 
+## Access check after each dbt run (`procurelake-dev-tenant-access-check`)
+
+The last step of `dbt_transformation`. It queries each of the four marts as each tenant role:
+`count_if(tenant_id <> '<tenant>')` must be 0. A failed query means access was lost, as after a
+full refresh. Either outcome fails the run and publishes to the alerts topic.
+
+| Run | Result |
+|---|---|
+| Check on its own (`manual-20261110T2200…`) | SUCCEEDED, 8 of 8 checks |
+| `dbt_transformation` `manual-20261110T221043Z`, new image `sha256:5dd2a00d…` | SUCCEEDED in 4 min 0 s: container exit 0, dbt 10 models + 65 tests pass (57.9 s), then the nested access check SUCCEEDED |
+
+The runner image refuses a full refresh, checked locally on the deployed image (local image ID =
+deployed digest). `--full-refresh`, `-f` and `DBT_FULL_REFRESH=true` each fail with
+`ValueError … not allowed in the scheduled runner`, and the container exits 1 before dbt starts.
+
+The first `dbt_transformation` update was rejected: "not authorized to create managed-rule". The
+role's new `events:PutRule` statement had been written moments before and had not reached Step
+Functions yet. A plain re-apply succeeded.
+
+The export role could not publish to the KMS-encrypted alerts topic, so a failed export would
+have sent no alert. The role now has the data key, as `cdc_processing` already did.
+
 ## What this does not show
 
 - **The failure path.** The SNS alert on a failed export was not triggered live.
 - **A scheduled run.** The first scheduled run is at 06:00 on 2026-11-11.
 - **Column-level controls.** None are applied; the filters include all columns.
-- **The check after each run.** An alert when a filter, grant or opt-in is missing does not
-  exist yet.
-- **The deployed dbt runner image.** It still lacks the full-refresh guard; it has not been
-  rebuilt or pushed.
+- **The access check failing live.** It passes live; its failure path (a foreign row is visible)
+  is covered by unit tests only.

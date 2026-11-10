@@ -143,3 +143,16 @@ run "exports_run_as_each_tenant_into_its_own_prefix" {
     error_message = "Each tenant role writes exports only under its own prefix."
   }
 }
+
+run "access_check_queries_every_mart_as_every_tenant" {
+  command = apply
+
+  assert {
+    condition     = strcontains(aws_sfn_state_machine.access_check.definition, "\"Credentials\"") && strcontains(aws_sfn_state_machine.access_check.definition, "foreign_rows")
+    error_message = "The check must query as each tenant role and count foreign rows."
+  }
+  assert {
+    condition     = alltrue([for p in [aws_iam_role_policy.exports, aws_iam_role_policy.access_check] : anytrue([for s in jsondecode(p.policy).Statement : s.Sid == "EncryptAlert"])])
+    error_message = "Publishing to the KMS-encrypted alerts topic needs the data key."
+  }
+}

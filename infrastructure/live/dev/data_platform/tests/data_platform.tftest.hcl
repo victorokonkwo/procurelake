@@ -171,4 +171,8 @@ run "state_machines_fail_loudly_and_retry_only_idempotent_work" {
     s.Action == "iam:PassRole" && s.Condition.StringEquals["iam:PassedToService"] == "ecs-tasks.amazonaws.com"])
     error_message = "PassRole must be limited to ECS tasks."
   }
+  assert {
+    condition     = jsondecode(aws_sfn_state_machine.dbt_transformation[0].definition).States.CheckExitCode.Choices[0].Next == "CheckTenantAccess" && jsondecode(aws_sfn_state_machine.dbt_transformation[0].definition).States.CheckTenantAccess.Parameters.StateMachineArn == "arn:aws:states:ca-central-1:123456789012:stateMachine:procurelake-dev-tenant-access-check"
+    error_message = "A successful dbt build must be followed by the tenant access check (ADR 0030)."
+  }
 }

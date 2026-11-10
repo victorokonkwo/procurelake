@@ -1,5 +1,5 @@
 {
-  "Comment": "Run dbt build in the dbt runner container on ECS Fargate (ADR 0029). Input: {\"run_id\": \"...\"}. Fails unless the container exits 0.",
+  "Comment": "Run dbt build in the dbt runner container on ECS Fargate (ADR 0029), then the tenant access check (ADR 0030). Input: {\"run_id\": \"...\"}. Fails unless the container exits 0 and every tenant still sees exactly its own rows.",
   "StartAt": "RunDbt",
   "States": {
     "RunDbt": {
@@ -53,10 +53,22 @@
             { "Variable": "$.dbt.Containers[0].ExitCode", "IsPresent": true },
             { "Variable": "$.dbt.Containers[0].ExitCode", "NumericEquals": 0 }
           ],
-          "Next": "Succeeded"
+          "Next": "CheckTenantAccess"
         }
       ],
       "Default": "DbtFailed"
+    },
+    "CheckTenantAccess": {
+      "Comment": "A rebuild that drops a mart deletes its Lake Formation grants (ADR 0030): fail loudly if any tenant lost access or sees other tenants. The check publishes its own SNS alert.",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::states:startExecution.sync:2",
+      "Parameters": {
+        "StateMachineArn": "${tenant_access_check_arn}",
+        "Input": { "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id" }
+      },
+      "ResultSelector": { "ExecutionArn.$": "$.ExecutionArn", "Status.$": "$.Status" },
+      "ResultPath": "$.access_check",
+      "Next": "Succeeded"
     },
     "Succeeded": { "Type": "Succeed" },
     "DbtFailed": {

@@ -481,6 +481,8 @@ resource "aws_iam_role_policy" "exports" {
     Statement = [
       { Sid = "ActAsTenants", Effect = "Allow", Action = "sts:AssumeRole", Resource = [for r in aws_iam_role.tenant : r.arn] },
       { Sid = "Alert", Effect = "Allow", Action = "sns:Publish", Resource = local.alerts_arn },
+      # The alerts topic is encrypted with the data key; publishing needs it.
+      { Sid = "EncryptAlert", Effect = "Allow", Action = ["kms:GenerateDataKey", "kms:Decrypt"], Resource = local.foundation.data_kms_key_arn },
     ]
   })
 }
@@ -539,4 +541,46 @@ resource "aws_scheduler_schedule" "exports" {
     role_arn = aws_iam_role.exports_scheduler.arn
     input    = jsonencode({})
   }
+}
+
+# ----------------------------------------------------------------------------- access check
+# tenant_access_check (orchestration/step_functions/tenant_access_check.asl.json): the last step
+# of every dbt_transformation run (dev/data_platform calls it by name). Queries every
+# tenant-facing mart as every tenant and fails with an SNS alert if access was lost (e.g. a
+# full refresh dropped the grants) or another tenant's rows are visible (ADR 0030).
+resource "aws_iam_role" "access_check" {
+  name = "procurelake-dev-tenant-access-check-sfn"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "states.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "access_check" {
+  name = "check-tenant-access"
+  role = aws_iam_role.access_check.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      { Sid = "ActAsTenants", Effect = "Allow", Action = "sts:AssumeRole", Resource = [for r in aws_iam_role.tenant : r.arn] },
+      { Sid = "Alert", Effect = "Allow", Action = "sns:Publish", Resource = local.alerts_arn },
+      { Sid = "EncryptAlert", Effect = "Allow", Action = ["kms:GenerateDataKey", "kms:Decrypt"], Resource = local.foundation.data_kms_key_arn },
+    ]
+  })
+}
+
+resource "aws_sfn_state_machine" "access_check" {
+  name     = "procurelake-dev-tenant-access-check"
+  role_arn = aws_iam_role.access_check.arn
+  definition = templatefile("${path.module}/../../../../orchestration/step_functions/tenant_access_check.asl.json", {
+    checks_json      = jsonencode(local.exports)
+    gold_database    = local.gold_db
+    alerts_topic_arn = local.alerts_arn
+  })
+  depends_on = [aws_iam_role_policy.access_check]
 }
