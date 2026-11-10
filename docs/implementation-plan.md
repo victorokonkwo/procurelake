@@ -273,10 +273,10 @@ The sprint should end with a reproducible commit and a working foundation, not j
 ### Repository foundation checklist (first commit)
 - [x] Create the GitHub repository and branch protection (public repo; `dev` default; `main` protected)
 - [x] Initialize the Python package, `pyproject.toml`, and `uv.lock`
-- [ ] Configure pytest, Ruff, pre-commit, and CI (pytest and Ruff done; pre-commit and CI not yet)
+- [x] Configure pytest, Ruff, pre-commit, and CI (`.github/workflows/ci-python.yml`, `ci-terraform.yml`; `.pre-commit-config.yaml`)
 - [x] Set up Terraform bootstrap and the dev environment
 - [x] Create the local PostgreSQL Docker Compose setup and schema
-- [ ] Create initial source contracts and configuration files
+- [x] Create initial source contracts and configuration files (`contracts/source/` checked against the live schema; `configs/tenants/`)
 - [x] Implement the synthetic procurement data generator
 - [x] Add architecture ADRs and the README
 

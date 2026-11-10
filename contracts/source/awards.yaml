@@ -1,0 +1,29 @@
+# Source contract: operational awards (procurement.awards, migration V0001).
+contract_version: 1
+name: awards
+source_system: procurelake_oltp
+physical: {system: postgresql, schema: procurement, table: awards}
+owner: procurement-platform
+description: >-
+  Contract awards made against a solicitation. award_amount is AWARDED value, not actual
+  spend (actual spend comes from paid invoices). The issuing agency is derived through
+  solicitation_id.
+grain: One row per award (a solicitation may have more than one award, e.g. multi-lot).
+data_classification: synthetic
+tenant_scoped: true
+primary_key: [award_id]
+foreign_keys:
+  - {columns: [tenant_id, solicitation_id], references_table: solicitations, references_columns: [tenant_id, solicitation_id]}
+  - {columns: [tenant_id, supplier_id], references_table: suppliers, references_columns: [tenant_id, supplier_id]}
+change_capture: {mode: cdc, source_updated_at_column: updated_at, deletes: hard}
+columns:
+  - {name: award_id, type: uuid, nullable: false, description: Award identifier.}
+  - {name: tenant_id, type: text, nullable: false, description: Owning tenant.}
+  - {name: solicitation_id, type: uuid, nullable: false, description: Solicitation the award was made under (same tenant).}
+  - {name: supplier_id, type: uuid, nullable: false, description: Awarded supplier (same tenant).}
+  - {name: award_amount, type: "numeric(18,2)", nullable: false, description: Awarded value in currency_code; > 0.}
+  - {name: currency_code, type: char(3), nullable: false, description: ISO-4217-format currency of award_amount.}
+  - {name: awarded_at, type: timestamptz, nullable: false, description: When the award was made.}
+  - {name: status, type: text, nullable: false, description: Award lifecycle status., allowed_values: [active, cancelled]}
+  - {name: created_at, type: timestamptz, nullable: false, description: Row creation time.}
+  - {name: updated_at, type: timestamptz, nullable: false, description: Last update time (trigger-maintained).}

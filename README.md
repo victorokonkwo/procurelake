@@ -2,7 +2,7 @@
 
 **Enterprise Procurement Intelligence & AI Data Platform.** A unified, production-style AWS procurement lakehouse built as a portfolio-grade reference implementation.
 
-> **Status:** Sprint 1, Days 1–4 complete: local PostgreSQL operational schema and synthetic two-tenant data, the AWS dev foundation (Terraform: budget, KMS, S3 lakehouse buckets, IAM, GitHub OIDC) deployed in `ca-central-1`, the first live public-data ingestion (USAspending → Bronze, with reconciled manifests), and Bronze queryable in Athena (Glue catalog, encrypted engineering workgroup, live integration tests). The Sprint 1 day plan is complete. Still open on the foundation checklist: pre-commit hooks, CI, and initial source contracts. See `docs/implementation-plan.md`.
+> **Status:** Sprint 1, Days 1–4 complete: local PostgreSQL operational schema and synthetic two-tenant data, the AWS dev foundation (Terraform: budget, KMS, S3 lakehouse buckets, IAM, GitHub OIDC) deployed in `ca-central-1`, the first live public-data ingestion (USAspending → Bronze, with reconciled manifests), and Bronze queryable in Athena (Glue catalog, encrypted engineering workgroup, live integration tests). The Sprint 1 plan and foundation checklist are complete: CI (GitHub Actions), pre-commit hooks, and schema-checked source contracts. See `docs/implementation-plan.md`.
 
 ## What it does
 

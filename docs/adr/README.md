@@ -27,5 +27,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0019 | Terraform state, bootstrap stack, CI authentication | Accepted | [0019-terraform-state-and-ci-authentication.md](0019-terraform-state-and-ci-authentication.md) |
 | 0020 | Ingestion framework and USAspending connector | Accepted | [0020-ingestion-framework.md](0020-ingestion-framework.md) |
 | 0021 | Bronze catalog tables and engineering Athena workgroup | Accepted | [0021-bronze-catalog-and-athena-workgroup.md](0021-bronze-catalog-and-athena-workgroup.md) |
+| 0022 | CI, pre-commit hooks, and source contracts | Accepted | [0022-ci-pre-commit-and-source-contracts.md](0022-ci-pre-commit-and-source-contracts.md) |
 
 Update the **ADR file** column as each ADR is written.

@@ -1,0 +1,32 @@
+# Source contract: operational invoices (procurement.invoices, migration V0001).
+contract_version: 1
+name: invoices
+source_system: procurelake_oltp
+physical: {system: postgresql, schema: procurement, table: invoices}
+owner: procurement-platform
+description: >-
+  Supplier invoices against a purchase order. paid_amount is the ACTUAL spend measure. An
+  invoice is always in its purchase order's currency (enforced by a composite foreign key).
+grain: One row per invoice.
+data_classification: synthetic
+tenant_scoped: true
+primary_key: [invoice_id]
+foreign_keys:
+  - {columns: [tenant_id, po_id, currency_code], references_table: purchase_orders, references_columns: [tenant_id, po_id, currency_code]}
+change_capture: {mode: cdc, source_updated_at_column: updated_at, deletes: hard}
+columns:
+  - {name: invoice_id, type: uuid, nullable: false, description: Invoice identifier.}
+  - {name: tenant_id, type: text, nullable: false, description: Owning tenant.}
+  - {name: po_id, type: uuid, nullable: false, description: Purchase order invoiced (same tenant).}
+  - {name: invoice_date, type: date, nullable: false, description: Invoice date.}
+  - {name: invoice_amount, type: "numeric(18,2)", nullable: false, description: Amount invoiced; > 0.}
+  - {name: paid_amount, type: "numeric(18,2)", nullable: false, description: Amount paid so far; between 0 and invoice_amount.}
+  - {name: currency_code, type: char(3), nullable: false, description: Currency; equals the purchase order's currency.}
+  - name: payment_status
+    type: text
+    nullable: false
+    description: Payment state; consistent with paid_amount and paid_at (CHECK constraint).
+    allowed_values: [pending, partially_paid, paid, cancelled]
+  - {name: paid_at, type: timestamptz, nullable: true, description: Time of (latest) payment; null unless partially_paid or paid.}
+  - {name: created_at, type: timestamptz, nullable: false, description: Row creation time.}
+  - {name: updated_at, type: timestamptz, nullable: false, description: Last update time (trigger-maintained).}

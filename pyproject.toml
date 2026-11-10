@@ -23,6 +23,7 @@ packages = ["src/procurelake"]
 [dependency-groups]
 dev = [
     "moto>=5.2.5",
+    "pre-commit>=4.7.0",
     "pytest>=9.2.0",
     "pytest-httpserver>=1.2.0",
     "ruff>=0.17.4",
