@@ -62,6 +62,9 @@ class IngestionManifest(BaseModel):
     ingestion_started_at: datetime
     ingestion_completed_at: datetime
     window: CollectionWindow | None = None
+    # True when the window had passed the source's settling period at collection time.
+    # Defaults to False so manifests written before this field existed count as unsettled.
+    window_settled: bool = False
     request: dict = Field(default_factory=dict)
     files: list[LandedFile] = Field(default_factory=list)
     reconciliation: Reconciliation | None = None
@@ -96,9 +99,13 @@ def load_manifests(store: LandingStore, source_system: str, dataset: str) -> lis
 
 
 def succeeded_windows(manifests: list[IngestionManifest]) -> set[date]:
-    """Start dates of single-day windows with at least one succeeded batch."""
+    """Start dates of single-day windows with at least one succeeded batch collected after the
+    window had settled. Unsettled batches stay in Bronze but do not mark a window complete."""
     return {
         m.window.start_date
         for m in manifests
-        if m.status == "succeeded" and m.window is not None and m.window.start_date == m.window.end_date
+        if m.status == "succeeded"
+        and m.window_settled
+        and m.window is not None
+        and m.window.start_date == m.window.end_date
     }

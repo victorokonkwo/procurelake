@@ -20,7 +20,7 @@ from procurelake.ingestion.http import HttpClient
 from procurelake.ingestion.landing import LocalLandingStore
 from procurelake.ingestion.manifest import load_manifests
 
-DAY = date(2026, 11, 8)
+DAY = date(2026, 10, 20)  # 21 days before NOW: outside the 10-day settling period
 NOW = datetime(2026, 11, 10, 9, 30, tzinfo=UTC)
 
 
@@ -80,7 +80,7 @@ def test_requests_use_documented_contract(httpserver, stores):
     assert payload["sort"] == "generated_internal_id" and payload["order"] == "asc"
     assert payload["filters"]["award_type_codes"] == ["A", "B", "C", "D"]
     assert payload["filters"]["time_period"] == [
-        {"start_date": "2026-11-08", "end_date": "2026-11-08", "date_type": "last_modified_date"}
+        {"start_date": "2026-10-20", "end_date": "2026-10-20", "date_type": "last_modified_date"}
     ]
 
 
@@ -134,7 +134,9 @@ def test_permanent_error_writes_failed_manifest_with_error(httpserver, stores):
     assert load_manifests(manifest_store, "usaspending", "spending_by_award")[0].status == "failed"
 
 
-@pytest.mark.parametrize("day", [date(2026, 11, 10), date(2026, 11, 11), date(2007, 9, 30)])
+@pytest.mark.parametrize(
+    "day", [date(2026, 11, 10), date(2026, 11, 11), date(2007, 9, 30), date(2026, 11, 8)]
+)
 def test_rejects_incomplete_future_or_unsupported_days(httpserver, stores, day):
     with pytest.raises(ValueError):
         _connector(httpserver, stores).ingest_day(day)
@@ -147,14 +149,44 @@ def test_config_rejects_page_size_above_api_max():
 
 def test_pending_days_fills_gaps_and_retries_failed_days(httpserver, stores):
     FakeUsaspending(record_count=3).install(httpserver)
-    ok = _connector(httpserver, stores).ingest_day(date(2026, 11, 6))
-    assert ok.status == "succeeded"
+    ok = _connector(httpserver, stores).ingest_day(date(2026, 10, 21))
+    assert ok.status == "succeeded" and ok.window_settled
 
     _, manifest_store = stores
     manifests = load_manifests(manifest_store, "usaspending", "spending_by_award")
-    assert pending_days(manifests, date(2026, 11, 5), date(2026, 11, 8)) == [
-        date(2026, 11, 5),
-        date(2026, 11, 7),
-        date(2026, 11, 8),
+    assert pending_days(manifests, date(2026, 10, 20), date(2026, 10, 23)) == [
+        date(2026, 10, 20),
+        date(2026, 10, 22),
+        date(2026, 10, 23),
     ]
-    assert pending_days(manifests, date(2026, 11, 5), date(2026, 11, 8), max_days=1) == [date(2026, 11, 5)]
+    assert pending_days(manifests, date(2026, 10, 20), date(2026, 10, 23), max_days=1) == [date(2026, 10, 20)]
+
+
+def test_unsettled_batches_land_but_do_not_complete_the_window(httpserver, stores):
+    FakeUsaspending(record_count=3).install(httpserver)
+    manifest = _connector(httpserver, stores).ingest_day(date(2026, 11, 8), allow_unsettled=True)
+    assert manifest.status == "succeeded"
+    assert manifest.window_settled is False
+
+    _, manifest_store = stores
+    manifests = load_manifests(manifest_store, "usaspending", "spending_by_award")
+    assert pending_days(manifests, date(2026, 11, 8), date(2026, 11, 8)) == [date(2026, 11, 8)]
+
+
+def test_manifests_without_settled_field_are_treated_as_unsettled():
+    from procurelake.ingestion.manifest import IngestionManifest
+
+    legacy = {
+        "source_system": "usaspending",
+        "dataset": "spending_by_award",
+        "schema_version": SCHEMA_VERSION,
+        "batch_id": "b1",
+        "status": "succeeded",
+        "ingestion_started_at": "2026-11-10T08:12:13Z",
+        "ingestion_completed_at": "2026-11-10T08:12:14Z",
+        "window": {"date_type": "last_modified_date", "start_date": "2026-11-08", "end_date": "2026-11-08"},
+        "code_version": "0.1.0",
+    }
+    manifest = IngestionManifest.model_validate(legacy)
+    assert manifest.window_settled is False
+    assert pending_days([manifest], date(2026, 11, 8), date(2026, 11, 8)) == [date(2026, 11, 8)]

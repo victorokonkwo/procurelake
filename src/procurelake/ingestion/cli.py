@@ -54,15 +54,22 @@ def main(argv: list[str] | None = None) -> int:
     usa.add_argument("--role-arn", help="IAM role to assume (e.g. procurelake-dev-ingestion)")
     usa.add_argument("--region", default=DEFAULT_REGION)
     usa.add_argument("--local-root", help="write to this directory instead of S3")
+    usa.add_argument(
+        "--allow-unsettled",
+        action="store_true",
+        help="collect a day inside the settling period (recorded as unsettled; does not complete the window)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     raw_store, manifest_store = _stores(args)
     connector = UsaspendingConnector(HttpClient(), raw_store, manifest_store)
 
-    yesterday = datetime.now(UTC).date() - timedelta(days=1)
+    last_settled_day = datetime.now(UTC).date() - timedelta(days=connector.config.settle_days)
     days = (
-        [args.date] if args.date else plan_incremental(manifest_store, args.since, yesterday, args.max_days)
+        [args.date]
+        if args.date
+        else plan_incremental(manifest_store, args.since, last_settled_day, args.max_days)
     )
     if not days:
         print("Nothing to ingest: every day in range already has a succeeded batch.")
@@ -70,10 +77,11 @@ def main(argv: list[str] | None = None) -> int:
 
     failures = 0
     for day in days:
-        manifest = connector.ingest_day(day)
+        manifest = connector.ingest_day(day, allow_unsettled=args.allow_unsettled)
         rec = manifest.reconciliation
         print(
-            f"{day} batch={manifest.batch_id} status={manifest.status} files={len(manifest.files)} "
+            f"{day} batch={manifest.batch_id} status={manifest.status} settled={manifest.window_settled} "
+            f"files={len(manifest.files)} "
             f"records={rec.landed_record_count if rec else 0} "
             f"expected={rec.expected_count_before if rec else None} "
             f"detail={rec.detail if rec else manifest.error}"

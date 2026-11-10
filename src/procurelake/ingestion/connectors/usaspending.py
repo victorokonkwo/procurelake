@@ -10,6 +10,10 @@ API behaviour verified against the live API on 2026-11-10 that shapes this desig
   data (a one-day window with 11,429 contracts returned full pages through page 114).
   So paging continues until a page is shorter than ``limit``, and ``hasNext`` is ignored.
 * Sorting by ``generated_internal_id`` gives a total order, so pages don't overlap.
+* Recent days are incomplete: on 2026-11-10 the per-day contract counts were 9,550 (11-04),
+  136 (11-05), 103 (11-06), then 0 for 11-07 to 11-09, versus thousands for older days. A day is
+  therefore only collected once it is ``settle_days`` old (default 10). Batches forced earlier
+  with ``allow_unsettled`` are recorded as ``window_settled=False`` and do not complete a window.
 
 Each batch covers one complete UTC day of ``last_modified_date``. It is reconciled against the
 count endpoint (queried before and after paging) and against the number of unique
@@ -95,8 +99,12 @@ class UsaspendingConfig:
     fields: tuple[str, ...] = FIELDS
     page_size: int = MAX_PAGE_SIZE
     max_pages: int = 1_000
+    # Days a window must age before its data is treated as complete (see module docstring).
+    settle_days: int = 10
 
     def __post_init__(self) -> None:
+        if self.settle_days < 0:
+            raise ValueError("settle_days must be >= 0")
         if not 1 <= self.page_size <= MAX_PAGE_SIZE:
             raise ValueError(f"page_size must be between 1 and {MAX_PAGE_SIZE}")
         if "generated_internal_id" not in self.fields:
@@ -162,10 +170,19 @@ class UsaspendingConnector:
         return sum(int(v) for v in results.values())
 
     # ------------------------------------------------------------------ ingestion
-    def ingest_day(self, day: date) -> IngestionManifest:
+    def is_settled(self, day: date, as_of: date) -> bool:
+        return (as_of - day).days >= self.config.settle_days
+
+    def ingest_day(self, day: date, allow_unsettled: bool = False) -> IngestionManifest:
         started = self.clock().replace(microsecond=0)
         if day >= started.date():
             raise ValueError(f"{day} is not a complete UTC day yet; ingest only past days")
+        settled = self.is_settled(day, started.date())
+        if not settled and not allow_unsettled:
+            raise ValueError(
+                f"{day} is within the {self.config.settle_days}-day settling period; source data for it "
+                "is still arriving. Use allow_unsettled to collect it anyway (recorded as unsettled)."
+            )
         if day < EARLIEST_SEARCH_DATE:
             raise ValueError(f"USAspending search does not support dates before {EARLIEST_SEARCH_DATE}")
 
@@ -207,6 +224,7 @@ class UsaspendingConnector:
             ingestion_started_at=started,
             ingestion_completed_at=self.clock().replace(microsecond=0),
             window=CollectionWindow(date_type="last_modified_date", start_date=day, end_date=day),
+            window_settled=settled,
             request={
                 "endpoint": "/api/v2/search/spending_by_award/",
                 "count_endpoint": "/api/v2/search/spending_by_award_count/",
