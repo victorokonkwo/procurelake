@@ -18,6 +18,11 @@ variable "raw_bucket_name" {
   type        = string
 }
 
+variable "lake_bucket_name" {
+  description = "Bucket holding Silver and Gold Iceberg tables."
+  type        = string
+}
+
 variable "artifacts_bucket_name" {
   description = "Bucket holding ingestion manifests."
   type        = string

@@ -71,7 +71,8 @@ format: ## Apply Ruff formatting and autofixes
 
 TF_DIRS := infrastructure/modules/kms infrastructure/modules/budgets infrastructure/modules/s3_lakehouse \
            infrastructure/modules/iam infrastructure/modules/glue_catalog infrastructure/modules/athena \
-           infrastructure/bootstrap infrastructure/live/dev/foundation
+           infrastructure/modules/glue_spark_job \
+           infrastructure/bootstrap infrastructure/live/dev/foundation infrastructure/live/dev/data_platform
 
 .PHONY: tf-fmt
 tf-fmt: ## terraform fmt check (recursive)
@@ -94,6 +95,22 @@ bootstrap-plan: ## Plan the bootstrap stack (needs AWS credentials + terraform.t
 dev-foundation-plan: ## Plan dev/foundation (needs AWS credentials, backend.hcl, terraform.tfvars)
 	terraform -chdir=infrastructure/live/dev/foundation init -input=false -backend-config=backend.hcl
 	terraform -chdir=infrastructure/live/dev/foundation plan -input=false -out=foundation.tfplan
+
+.PHONY: glue-wheel
+glue-wheel: ## Build the procurelake wheel deployed to Glue (reproducible; dist/ holds only this wheel)
+	rm -rf dist
+	uv build --wheel --out-dir dist
+
+.PHONY: dev-data-platform-plan
+dev-data-platform-plan: glue-wheel ## Plan dev/data_platform (Glue jobs; needs AWS creds, backend.hcl, terraform.tfvars)
+	terraform -chdir=infrastructure/live/dev/data_platform init -input=false -backend-config=backend.hcl
+	terraform -chdir=infrastructure/live/dev/data_platform plan -input=false -out=data_platform.tfplan
+
+.PHONY: silver-run
+silver-run: ## Run the Bronze->Silver Glue job on the latest complete snapshot batch and wait (BATCH= to pick one)
+	uv run python scripts/aws/run_glue_job.py \
+	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw bronze_to_silver_job_name) \
+	  $(if $(BATCH),--arg=--batch-id=$(BATCH),)
 
 DEV_TF := infrastructure/live/dev/foundation
 

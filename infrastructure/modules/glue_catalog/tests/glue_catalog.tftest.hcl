@@ -5,6 +5,7 @@ variables {
   environment           = "dev"
   raw_bucket_name       = "procurelake-dev-raw-123456789012-ca-central-1"
   artifacts_bucket_name = "procurelake-dev-artifacts-123456789012-ca-central-1"
+  lake_bucket_name      = "procurelake-dev-lake-123456789012-ca-central-1"
 }
 
 run "bronze_database_and_raw_table" {
@@ -38,6 +39,19 @@ run "partition_projection_matches_landing_layout" {
   assert {
     condition     = aws_glue_catalog_table.usaspending_spending_by_award_raw.partition_keys[0].name == "ingestion_date"
     error_message = "Partition key must be ingestion_date."
+  }
+}
+
+run "silver_database_lives_in_the_lake_bucket" {
+  command = apply
+
+  assert {
+    condition     = aws_glue_catalog_database.silver.name == "procurelake_dev_silver"
+    error_message = "Unexpected Silver database name."
+  }
+  assert {
+    condition     = aws_glue_catalog_database.silver.location_uri == "s3://procurelake-dev-lake-123456789012-ca-central-1/silver/"
+    error_message = "Silver database must be located under the lake bucket's silver/ prefix."
   }
 }
 

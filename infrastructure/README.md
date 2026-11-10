@@ -6,9 +6,11 @@ Terraform for ProcureLake (ADR 0010, 0019). Region: `ca-central-1`. Only `dev` i
 infrastructure/
 ├── bootstrap/                 # applied once by a human: budget, state bucket, GitHub OIDC roles
 ├── modules/                   # reusable building blocks (each has offline tests in tests/)
-│   ├── budgets/  kms/  s3_lakehouse/  iam/  glue_catalog/  athena/
-└── live/dev/foundation/       # dev root: data KMS key, 4 lakehouse buckets, workload roles,
-                               #   Bronze Glue catalog, engineering Athena workgroup
+│   ├── budgets/  kms/  s3_lakehouse/  iam/  glue_catalog/  athena/  glue_spark_job/
+└── live/dev/
+    ├── foundation/            # data KMS key, 4 lakehouse buckets, workload roles,
+    │                          #   Bronze + Silver Glue databases, engineering Athena workgroup
+    └── data_platform/         # Glue jobs (Bronze -> Silver), reading foundation's remote state
 ```
 
 Other module and root directories from `docs/architecture/repository_structure.md` are added when their sprint starts.
@@ -56,11 +58,20 @@ IAM Identity Center session if you can (`aws configure sso`), not long-lived acc
    For a brand-new account, comment out the backend block for the first apply, then run
    `init -migrate-state` with the same flag.
 
+5. **dev data_platform** (after foundation; ADR 0025):
+   ```bash
+   cp infrastructure/live/dev/foundation/backend.hcl infrastructure/live/dev/data_platform/backend.hcl
+   cp infrastructure/live/dev/data_platform/terraform.tfvars.example infrastructure/live/dev/data_platform/terraform.tfvars
+   make dev-data-platform-plan               # builds the wheel, then plans; review
+   terraform -chdir=infrastructure/live/dev/data_platform apply data_platform.tfplan
+   make silver-run                           # one Glue run on the latest complete snapshot batch
+   ```
+
 ## Current deployment (dev)
 
 Region `ca-central-1`, deployed 2026-11-10 to the dev account (its ID is in the git-ignored
 tfvars). Both stacks' state is in `s3://procurelake-tfstate-<account>-ca-central-1/` under
-`bootstrap/` and `dev/foundation/`.
+`bootstrap/`, `dev/foundation/` and `dev/data_platform/` (added 2026-11-10: the Silver Glue job).
 
 ## Safety properties
 

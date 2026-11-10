@@ -30,4 +30,4 @@ Work package B1 asks for Glue Spark jobs that conform schemas, reject malformed 
 - **Tested locally end to end** (PostgreSQL → snapshot → Silver): every table reconciles with the source, values are exact, re-apply is a no-op, source updates and deletes propagate, stale batches are refused, the quality gate blocks, and Bronze/manifest mismatches are caught. The rejected-row retention rule was mutation-checked: without it, the row is deleted and the test fails.
 - **Cross-table referential checks** (for example, an award's supplier existing in `silver_suppliers`) are not done in Silver. They belong in dbt relationship tests (Week 4).
 - **Local quirk:** PySpark's `collect()` shows timestamps in the machine's local zone. Tests check stored instants inside Spark.
-- **Still to do for Week 3:** the Glue job entrypoint, Terraform (Silver database, Glue job, Glue role, quarantine write permission), and a live run.
+- **Deployed to AWS Glue 5.1 in ADR 0025** (job, Terraform, live run in dev).

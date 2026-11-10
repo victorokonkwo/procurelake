@@ -20,6 +20,12 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/procurelake"]
 
+# Ship the contracts and Silver pipeline configs inside the wheel, so a deployed job always
+# applies the rules of the same commit (procurelake.lakehouse.silver.job.resource_root).
+[tool.hatch.build.targets.wheel.force-include]
+"contracts/source" = "procurelake/_bundled/contracts/source"
+"configs/pipelines/silver" = "procurelake/_bundled/configs/pipelines/silver"
+
 [dependency-groups]
 dev = [
     "moto>=5.2.5",

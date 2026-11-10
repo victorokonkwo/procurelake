@@ -1,4 +1,5 @@
-# Glue Data Catalog: Bronze database and raw tables (ADR 0004, ADR 0021).
+# Glue Data Catalog: Bronze database and raw tables (ADR 0004, ADR 0021), and the Silver
+# database whose Apache Iceberg tables the Silver Glue job creates and maintains (ADR 0025).
 #
 # Bronze tables expose source files exactly as landed: one row per line, in a single
 # `raw_json` string column. USAspending pages are single-line JSON documents (verified across
@@ -58,4 +59,13 @@ resource "aws_glue_catalog_table" "usaspending_spending_by_award_raw" {
       }
     }
   }
+}
+
+# Silver tables are created by the Silver job through the Iceberg Glue catalog, never by
+# Terraform: their schema comes from the source contracts and their layout from Iceberg
+# metadata (AGENTS.md section 2.5).
+resource "aws_glue_catalog_database" "silver" {
+  name         = "${var.name_prefix}_silver"
+  description  = "ProcureLake ${var.environment} Silver: validated, deduplicated Apache Iceberg tables."
+  location_uri = "s3://${var.lake_bucket_name}/silver/"
 }

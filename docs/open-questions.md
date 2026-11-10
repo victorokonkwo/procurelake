@@ -34,6 +34,11 @@ These are decisions the planning documents **do not make**. Agents and contribut
 29. **Human AWS access.** Dev was deployed with IAM user `victoroko` (a long-lived access key plus temporary `AdministratorAccess`). Move to IAM Identity Center (SSO), remove the user's `AdministratorAccess`, and rotate or delete the access key.
 30. **Re-collection policy for settled windows.** USAspending records can change after the 10-day settling period. Decide on a periodic re-sweep (for example, the trailing 30 days weekly) and how Silver picks among several batches for the same window (latest succeeded batch, or dedup by `generated_internal_id` plus `Last Modified Date`).
 
+31. **Glue 6.0.** The AWS Pricing API lists Glue 6.0+ ETL at $0.308/DPU-hour in ca-central-1 against $0.44 for Glue 5.1 (checked 2026-11-10). Moving changes the Spark/Python/Iceberg versions fixed in ADR 0015, so the local test stack would change too. Decide before scaling the Silver jobs.
+32. **Glue dependency source.** The Silver job installs exact pins from PyPI at every run start (ADR 0025). Decide whether to host the dependency wheels in the artifacts bucket (`.gluewheels.zip` with `--no-index`) to remove the runtime dependency on PyPI.
+33. **Glue log encryption.** `/aws-glue/jobs/{error,output}` use CloudWatch default encryption. Decide whether to use a KMS key (needs a Glue security configuration and `logs:AssociateKmsKey`).
+34. **USAspending in Silver.** Only the operational tables are in Silver. Decide the Silver grain and dedup for USAspending batches (ties to item 30).
+
 ## Naming inconsistencies between the source documents
 23. ~~Cycle-time mart name~~ **Resolved: ADR 0017** (`mart_procurement_cycle_time`).
 24. ~~Bronze Postgres prefix~~ **Resolved: ADR 0017** (`bronze/postgres/`). How full-load and CDC output are laid out is deferred to ADR 0014 (Week 5).

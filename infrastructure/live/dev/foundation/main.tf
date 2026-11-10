@@ -1,5 +1,6 @@
-# dev / foundation: encryption key, lakehouse buckets, workload identities, Bronze catalog,
-# and the engineering Athena workgroup. Networking is added when RDS/DMS need it (Week 5).
+# dev / foundation: encryption key, lakehouse buckets, workload identities, Bronze and Silver
+# catalog databases, and the engineering Athena workgroup. Glue jobs live in dev/data_platform.
+# Networking is added when RDS/DMS need it (Week 5).
 
 locals {
   name_prefix = "procurelake-dev"
@@ -27,6 +28,7 @@ module "catalog" {
   name_prefix           = replace(local.name_prefix, "-", "_")
   environment           = "dev"
   raw_bucket_name       = module.lakehouse.bucket_names["raw"]
+  lake_bucket_name      = module.lakehouse.bucket_names["lake"]
   artifacts_bucket_name = module.lakehouse.bucket_names["artifacts"]
 }
 
@@ -56,5 +58,5 @@ module "iam" {
   bucket_arns           = module.lakehouse.bucket_arns
   kms_key_arn           = module.data_key.key_arn
   athena_workgroup_arns = [module.athena.workgroup_arn]
-  glue_database_names   = [module.catalog.bronze_database_name]
+  glue_database_names   = [module.catalog.bronze_database_name, module.catalog.silver_database_name]
 }

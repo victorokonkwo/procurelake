@@ -20,6 +20,7 @@ from procurelake.data_generator.generate import generate_dataset
 from procurelake.data_generator.load import load_dataset
 from procurelake.ingestion.connectors.postgres_snapshot import PostgresSnapshotConnector
 from procurelake.ingestion.landing import LocalLandingStore
+from procurelake.lakehouse.silver.job import run_batch
 from procurelake.lakehouse.silver.pipeline import BronzeMismatchError, run_table, select_snapshot_batch
 from procurelake.lakehouse.silver.spec import load_specs
 from procurelake.lakehouse.silver.writer import StaleBatchError
@@ -53,6 +54,7 @@ def env(scratch_db_factory, dataset, tmp_path, spark):
         "dsn": dsn,
         "snapshot": snapshot,
         "ns": namespace,
+        "artifacts": art,
         "quarantine": (tmp_path / "quarantine").as_uri(),
     }
 
@@ -193,3 +195,37 @@ def test_select_snapshot_batch_requires_every_table(env):
     assert select_snapshot_batch(manifests, SPECS) == batch
     with pytest.raises(LookupError):
         select_snapshot_batch([m for m in manifests if m.dataset != "awards"], SPECS)
+
+
+def test_run_batch_applies_every_table_and_records_a_summary(spark, env, dataset):
+    manifests = env["snapshot"]()
+    database = env["ns"].split(".", 1)[1]
+    batch, runs, key = run_batch(spark, SPECS, env["artifacts"], "lake", database, env["quarantine"])
+    assert batch == manifests["awards"].batch_id
+    assert {r.table: (r.status, r.apply.rows_after) for r in runs} == {
+        t: ("applied", n) for t, n in dataset.counts().items() if t in SPECS
+    }
+    summary = json.loads(env["artifacts"].get(key))
+    assert summary["status"] == "succeeded" and summary["batch_id"] == batch
+    assert {t["table"] for t in summary["tables"]} == set(SPECS)
+
+    # Re-running the same batch changes nothing and records a second summary.
+    _, again, key2 = run_batch(
+        spark, SPECS, env["artifacts"], "lake", database, env["quarantine"], run_id="rerun"
+    )
+    assert {r.status for r in again} == {"skipped"} and key2 != key
+
+
+def test_run_batch_refuses_an_incomplete_batch(spark, env):
+    manifests = env["snapshot"]()
+    database = env["ns"].split(".", 1)[1]
+    with pytest.raises(LookupError):
+        run_batch(
+            spark,
+            {**SPECS, "contract_documents_missing": SPECS["awards"]},
+            env["artifacts"],
+            "lake",
+            database,
+            env["quarantine"],
+            batch_id=manifests["awards"].batch_id,
+        )

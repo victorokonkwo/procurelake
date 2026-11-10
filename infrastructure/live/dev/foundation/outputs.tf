@@ -27,3 +27,8 @@ output "athena_workgroup_name" {
   description = "Athena workgroup for engineering queries."
   value       = module.athena.workgroup_name
 }
+
+output "silver_database_name" {
+  description = "Glue database for Silver Iceberg tables."
+  value       = module.catalog.silver_database_name
+}

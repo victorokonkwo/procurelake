@@ -1,0 +1,10 @@
+# Python packages the Silver Glue job installs on top of the AWS Glue 5.1 runtime, besides the
+# procurelake wheel. Installed with pip --no-deps, so this list must be complete and exact:
+# tests/unit/test_glue_packaging.py checks it against uv.lock and the job's imports.
+# boto3/botocore come from the Glue runtime; psycopg and requests are not used by the job.
+pydantic==2.14.3
+pydantic-core==2.50.4
+annotated-types==0.8.0
+typing-extensions==4.16.0
+typing-inspection==0.4.5
+pyyaml==6.0.3
