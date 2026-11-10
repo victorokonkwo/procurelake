@@ -17,3 +17,13 @@ output "data_engineer_role_arn" {
   description = "Role for building Silver/Gold."
   value       = module.iam.data_engineer_role_arn
 }
+
+output "bronze_database_name" {
+  description = "Glue database for Bronze tables."
+  value       = module.catalog.bronze_database_name
+}
+
+output "athena_workgroup_name" {
+  description = "Athena workgroup for engineering queries."
+  value       = module.athena.workgroup_name
+}

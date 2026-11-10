@@ -93,3 +93,43 @@ run "requires_all_bucket_roles" {
   }
   expect_failures = [var.bucket_arns]
 }
+
+run "query_access_is_data_engineer_only_and_scoped" {
+  command = apply
+
+  variables {
+    athena_workgroup_arns = ["arn:aws:athena:ca-central-1:123456789012:workgroup/procurelake-dev-engineering"]
+    glue_database_names   = ["procurelake_dev_bronze"]
+  }
+
+  assert {
+    condition     = length(aws_iam_role_policy.data_engineer_query) == 1 && aws_iam_role_policy.data_engineer_query[0].role == aws_iam_role.data_engineer.id
+    error_message = "Query access must be attached to the data engineer role."
+  }
+  assert {
+    condition = toset(flatten([for s in jsondecode(aws_iam_role_policy.data_engineer_query[0].policy).Statement :
+      s.Resource if s.Sid == "RunAthenaQueriesInPlatformWorkgroups"])) == toset([
+      "arn:aws:athena:ca-central-1:123456789012:workgroup/procurelake-dev-engineering",
+    ])
+    error_message = "Athena actions must be limited to the platform workgroup."
+  }
+  assert {
+    condition = alltrue([for s in jsondecode(aws_iam_role_policy.data_engineer_query[0].policy).Statement :
+    alltrue([for a in flatten([s.Action]) : !can(regex("^glue:(Create|Update|Delete|Put|BatchCreate|BatchDelete)", a))])])
+    error_message = "The data engineer must not be able to modify the catalog through this policy."
+  }
+  assert {
+    condition = alltrue([for s in jsondecode(aws_iam_role_policy.ingestion.policy).Statement :
+    alltrue([for a in flatten([s.Action]) : !startswith(a, "athena:") && !startswith(a, "glue:")])])
+    error_message = "Ingestion must not have Athena or Glue access."
+  }
+}
+
+run "no_query_policy_without_workgroups" {
+  command = apply
+
+  assert {
+    condition     = length(aws_iam_role_policy.data_engineer_query) == 0
+    error_message = "Query policy must not exist when no workgroups are given."
+  }
+}

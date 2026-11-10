@@ -70,7 +70,8 @@ format: ## Apply Ruff formatting and autofixes
 	uv run ruff check --fix .
 
 TF_DIRS := infrastructure/modules/kms infrastructure/modules/budgets infrastructure/modules/s3_lakehouse \
-           infrastructure/modules/iam infrastructure/bootstrap infrastructure/live/dev/foundation
+           infrastructure/modules/iam infrastructure/modules/glue_catalog infrastructure/modules/athena \
+           infrastructure/bootstrap infrastructure/live/dev/foundation
 
 .PHONY: tf-fmt
 tf-fmt: ## terraform fmt check (recursive)
@@ -109,6 +110,21 @@ ingest-usaspending: ## Ingest one settled day from USAspending into dev Bronze a
 ingest-usaspending-local: ## Ingest one settled day into ./local_lake (no AWS) (DATE=YYYY-MM-DD)
 	@test -n "$(DATE)" || { echo "Usage: make ingest-usaspending-local DATE=YYYY-MM-DD"; exit 1; }
 	uv run python -m procurelake.ingestion.cli usaspending --date $(DATE) --local-root local_lake
+
+TFOUT = terraform -chdir=$(DEV_TF) output
+BUCKET = $$($(TFOUT) -json bucket_names | uv run python -c "import sys,json;print(json.load(sys.stdin)['$(1)'])")
+
+.PHONY: test-aws
+test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evidence in build/evidence/
+	PROCURELAKE_AWS_TESTS=1 \
+	PROCURELAKE_DEV_RAW_BUCKET=$(call BUCKET,raw) \
+	PROCURELAKE_DEV_ARTIFACTS_BUCKET=$(call BUCKET,artifacts) \
+	PROCURELAKE_DEV_DATA_KMS_KEY_ARN=$$($(TFOUT) -raw data_kms_key_arn) \
+	PROCURELAKE_DEV_INGESTION_ROLE_ARN=$$($(TFOUT) -raw ingestion_role_arn) \
+	PROCURELAKE_DEV_DATA_ENGINEER_ROLE_ARN=$$($(TFOUT) -raw data_engineer_role_arn) \
+	PROCURELAKE_DEV_ATHENA_WORKGROUP=$$($(TFOUT) -raw athena_workgroup_name) \
+	PROCURELAKE_DEV_BRONZE_DATABASE=$$($(TFOUT) -raw bronze_database_name) \
+	uv run pytest -m aws -v --junitxml=build/test-results/aws-integration.xml tests/integration/aws
 
 .PHONY: test-unit
 test-unit: ## Unit tests (no services required)

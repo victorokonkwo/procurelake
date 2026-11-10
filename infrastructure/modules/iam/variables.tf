@@ -39,3 +39,21 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "region" {
+  description = "AWS region of the Glue catalog."
+  type        = string
+  default     = "ca-central-1"
+}
+
+variable "athena_workgroup_arns" {
+  description = "Athena workgroups the data engineer may run queries in. Empty disables query access."
+  type        = list(string)
+  default     = []
+}
+
+variable "glue_database_names" {
+  description = "Glue databases (and their tables) the data engineer may read metadata for."
+  type        = list(string)
+  default     = []
+}

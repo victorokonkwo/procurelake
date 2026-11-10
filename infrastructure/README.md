@@ -6,8 +6,9 @@ Terraform for ProcureLake (ADR 0010, 0019). Region: `ca-central-1`. Only `dev` i
 infrastructure/
 ├── bootstrap/                 # applied once by a human: budget, state bucket, GitHub OIDC roles
 ├── modules/                   # reusable building blocks (each has offline tests in tests/)
-│   ├── budgets/  kms/  s3_lakehouse/  iam/
-└── live/dev/foundation/       # dev root module: data KMS key, 4 lakehouse buckets, workload roles
+│   ├── budgets/  kms/  s3_lakehouse/  iam/  glue_catalog/  athena/
+└── live/dev/foundation/       # dev root: data KMS key, 4 lakehouse buckets, workload roles,
+                               #   Bronze Glue catalog, engineering Athena workgroup
 ```
 
 Other module and root directories from `docs/architecture/repository_structure.md` are added when their sprint starts.

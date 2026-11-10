@@ -140,3 +140,64 @@ resource "aws_iam_role_policy" "data_engineer" {
     ]
   })
 }
+
+# ----------------------------------------------------------------------------- query access
+# Athena + Glue Data Catalog read access for the data engineer only (ingestion never queries).
+locals {
+  glue_catalog_arn = "arn:aws:glue:${var.region}:${var.aws_account_id}:catalog"
+  glue_resource_arns = concat(
+    [local.glue_catalog_arn],
+    [for db in var.glue_database_names : "arn:aws:glue:${var.region}:${var.aws_account_id}:database/${db}"],
+    [for db in var.glue_database_names : "arn:aws:glue:${var.region}:${var.aws_account_id}:table/${db}/*"],
+  )
+}
+
+resource "aws_iam_role_policy" "data_engineer_query" {
+  count = length(var.athena_workgroup_arns) > 0 ? 1 : 0
+
+  name = "data-engineer-query"
+  role = aws_iam_role.data_engineer.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "RunAthenaQueriesInPlatformWorkgroups"
+        Effect = "Allow"
+        Action = [
+          "athena:StartQueryExecution",
+          "athena:StopQueryExecution",
+          "athena:GetQueryExecution",
+          "athena:GetQueryResults",
+          "athena:GetQueryRuntimeStatistics",
+          "athena:GetWorkGroup",
+          "athena:ListQueryExecutions",
+          "athena:GetNamedQuery",
+          "athena:ListNamedQueries",
+          "athena:BatchGetNamedQuery",
+        ]
+        Resource = var.athena_workgroup_arns
+      },
+      {
+        Sid    = "ReadPlatformCatalog"
+        Effect = "Allow"
+        Action = [
+          "glue:GetDatabase",
+          "glue:GetDatabases",
+          "glue:GetTable",
+          "glue:GetTables",
+          "glue:GetPartition",
+          "glue:GetPartitions",
+          "glue:BatchGetPartition",
+        ]
+        Resource = local.glue_resource_arns
+      },
+      {
+        # Athena writes results with multipart uploads under artifacts/athena_results/.
+        Sid      = "AthenaResultMultipart"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucketMultipartUploads", "s3:ListMultipartUploadParts"]
+        Resource = [local.artifacts_arn, "${local.artifacts_arn}/athena_results/*"]
+      },
+    ]
+  })
+}

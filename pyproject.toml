@@ -39,10 +39,14 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 [tool.ruff.lint.per-file-ignores]
 # assert is the pytest idiom; test DSNs/passwords are local-only fixtures; seeded random is fine in tests.
 "**/tests/**" = ["S101", "S105", "S106", "S311"]
+# Athena queries in integration tests are built from module constants and values checked by
+# _lit() against strict patterns (tests/integration/aws/test_bronze_queryable.py).
+"tests/integration/**" = ["S101", "S105", "S106", "S311", "S608"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "database/postgres/tests"]
 addopts = "-ra --strict-markers"
 markers = [
     "postgres: requires the local PostgreSQL service (make db-up) and PROCURELAKE_PG_DSN",
+    "aws: integration tests against the deployed dev AWS environment (opt-in: make test-aws)",
 ]
