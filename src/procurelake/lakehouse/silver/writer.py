@@ -45,6 +45,10 @@ class StaleBatchError(RuntimeError):
     """Raised when a batch older than the table's last applied batch is applied."""
 
 
+class CdcOwnedTableError(RuntimeError):
+    """Raised when a snapshot would be applied to a table that CDC now maintains (ADR 0028)."""
+
+
 @dataclass(frozen=True)
 class ApplyResult:
     table: str
@@ -91,7 +95,11 @@ def apply_snapshot(
     rejected_keys: DataFrame,
 ) -> ApplyResult:
     _check_identifiers(fq_table, batch_id)
-    previous = last_applied_batch(spark, fq_table)
+    props = {r.key: r.value for r in spark.sql(f"SHOW TBLPROPERTIES {fq_table}").collect()}
+    if props.get("procurelake.cdc_owned") == "true":
+        # A snapshot apply hard-deletes absent keys and ignores tombstones and commit order.
+        raise CdcOwnedTableError(f"{fq_table} is maintained by CDC; snapshot apply refused")
+    previous = props.get(LAST_BATCH_PROPERTY)
     if previous == batch_id:
         return ApplyResult(fq_table, batch_id, True, spark.table(fq_table).count(), None)
     if previous is not None and batch_id < previous:

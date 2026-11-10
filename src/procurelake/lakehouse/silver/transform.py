@@ -34,24 +34,20 @@ def _present(column: str) -> Column:
     return F.get_json_object(F.col(RAW), f"$.{column}").isNotNull()
 
 
-def validate(lines: DataFrame, spec: SilverTableSpec, batch_id: str) -> tuple[DataFrame, DataFrame]:
-    schema = spec.ddl_schema()  # from_json accepts a DDL schema string
-    parsed = lines.withColumn("_parsed", F.from_json(F.col(RAW), schema, {"mode": "PERMISSIVE"}))
-    parsed = parsed.withColumn(
-        "_is_object", F.col(RAW).rlike(r"^\s*\{.*\}\s*$") & F.col("_parsed").isNotNull()
-    )
-    for name, _ in spec.columns:
-        parsed = parsed.withColumn(name, F.col(f"_parsed.`{name}`"))
+def with_reasons(df: DataFrame, spec: SilverTableSpec, is_object: Column, present) -> DataFrame:
+    """Add a ``reasons`` array (empty = valid) to rows whose business columns are already typed.
 
-    checks: list[Column] = [F.when(~F.col("_is_object"), F.lit("unparseable_json"))]
+    ``is_object``: the row parsed into a record at all. ``present(name)``: the source supplied a
+    non-null value for ``name`` (for JSON, before type conversion, so a value that failed to
+    convert is reported as ``type_mismatch``; for typed sources, simply non-null).
+    """
+    checks: list[Column] = [F.when(~is_object, F.lit("unparseable_json"))]
     for name, _ in spec.columns:
         checks.append(
-            F.when(
-                F.col("_is_object") & _present(name) & F.col(name).isNull(), F.lit(f"type_mismatch:{name}")
-            )
+            F.when(is_object & present(name) & F.col(name).isNull(), F.lit(f"type_mismatch:{name}"))
         )
     for name in spec.not_null:
-        checks.append(F.when(F.col("_is_object") & ~_present(name), F.lit(f"not_null:{name}")))
+        checks.append(F.when(is_object & ~present(name), F.lit(f"not_null:{name}")))
     for name, length in spec.char_lengths.items():
         checks.append(F.when(F.length(F.col(name)) > length, F.lit(f"too_long:{name}")))
     for name, values in spec.allowed_values.items():
@@ -61,7 +57,7 @@ def validate(lines: DataFrame, spec: SilverTableSpec, batch_id: str) -> tuple[Da
     # Business rules run only on structurally valid rows (parsed, typed, required fields present),
     # so a type error is reported once, as its root cause, not again as every rule it breaks.
     # On a structurally valid row, a rule that evaluates to NULL counts as a failure.
-    structural = parsed.withColumn("_structural", F.filter(F.array(*checks), lambda r: r.isNotNull()))
+    structural = df.withColumn("_structural", F.filter(F.array(*checks), lambda r: r.isNotNull()))
     rule_checks = [
         F.when(
             F.size("_structural") == 0,
@@ -69,15 +65,26 @@ def validate(lines: DataFrame, spec: SilverTableSpec, batch_id: str) -> tuple[Da
         )
         for rule in spec.config.rules
     ]
-    with_reasons = structural.withColumn(
+    return structural.withColumn(
         "reasons",
         F.concat(
             F.col("_structural"),
             F.filter(F.array(*rule_checks, F.lit(None).cast("string")), lambda r: r.isNotNull()),
         ),
+    ).drop("_structural")
+
+
+def validate(lines: DataFrame, spec: SilverTableSpec, batch_id: str) -> tuple[DataFrame, DataFrame]:
+    schema = spec.ddl_schema()  # from_json accepts a DDL schema string
+    parsed = lines.withColumn("_parsed", F.from_json(F.col(RAW), schema, {"mode": "PERMISSIVE"}))
+    parsed = parsed.withColumn(
+        "_is_object", F.col(RAW).rlike(r"^\s*\{.*\}\s*$") & F.col("_parsed").isNotNull()
     )
-    clean = with_reasons.where(F.size("reasons") == 0)
-    bad = with_reasons.where(F.size("reasons") > 0)
+    for name, _ in spec.columns:
+        parsed = parsed.withColumn(name, F.col(f"_parsed.`{name}`"))
+    with_reasons_df = with_reasons(parsed, spec, F.col("_is_object"), _present)
+    clean = with_reasons_df.where(F.size("reasons") == 0)
+    bad = with_reasons_df.where(F.size("reasons") > 0)
 
     # Deduplicate on the primary key: keep the latest change; older copies are superseded.
     key_window = Window.partitionBy(*spec.primary_key).orderBy(

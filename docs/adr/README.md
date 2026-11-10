@@ -33,5 +33,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0025 | Silver Glue job: packaging, deployment, permissions | Accepted | [0025-silver-glue-job.md](0025-silver-glue-job.md) |
 | 0026 | dbt Gold on Athena: versions, materialization, deletes, runner | Accepted | [0026-dbt-gold.md](0026-dbt-gold.md) |
 | 0027 | CDC source (RDS PostgreSQL) and AWS DMS into Bronze | Accepted | [0027-cdc-source-and-dms.md](0027-cdc-source-and-dms.md) |
+| 0028 | CDC apply engine: ordering, tombstones, checkpoint and lease | Accepted | [0028-cdc-apply-engine.md](0028-cdc-apply-engine.md) |
 
 Update the **ADR file** column as each ADR is written.

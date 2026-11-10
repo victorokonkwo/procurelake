@@ -47,6 +47,8 @@ class LandingStore(Protocol):
 
     def list_keys(self, prefix: str) -> list[str]: ...
 
+    def uri_for(self, key: str) -> str: ...
+
 
 class S3LandingStore:
     def __init__(self, s3_client, bucket: str):
@@ -82,6 +84,9 @@ class S3LandingStore:
     def get(self, key: str) -> bytes:
         return self._s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()
 
+    def uri_for(self, key: str) -> str:
+        return f"s3://{self.bucket}/{key}"
+
     def list_keys(self, prefix: str) -> list[str]:
         keys: list[str] = []
         paginator = self._s3.get_paginator("list_objects_v2")
@@ -114,6 +119,9 @@ class LocalLandingStore:
 
     def get(self, key: str) -> bytes:
         return self._path(key).read_bytes()
+
+    def uri_for(self, key: str) -> str:
+        return f"file://{self._path(key)}"
 
     def list_keys(self, prefix: str) -> list[str]:
         if not self.root.exists():
