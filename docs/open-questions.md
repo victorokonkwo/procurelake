@@ -38,3 +38,4 @@ These are decisions the planning documents **do not make**. Agents and contribut
 24. ~~Bronze Postgres prefix~~ **Resolved: ADR 0017** (`bronze/postgres/`). How full-load and CDC output are laid out is deferred to ADR 0014 (Week 5).
 25. ~~Terraform layout~~ **Resolved: ADR 0017** (`infrastructure/live/`).
 26. ~~Package root~~ **Resolved: ADR 0017** (`src/procurelake/`).
+30. **Re-collection policy for settled windows.** USAspending records can change after the 10-day settling period. Decide on a periodic re-sweep (for example, the trailing 30 days weekly) and how Silver picks among several batches for the same window (latest succeeded batch, or dedup by `generated_internal_id` plus `Last Modified Date`).

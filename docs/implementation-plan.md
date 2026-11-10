@@ -265,7 +265,7 @@ The platform isn't complete until all of these pass, with automated integration 
 | 1 ✅ | Initialize the repository and ADRs; local Docker PostgreSQL; database schema | All source tables exist with constraints. **Done 2026-11-10:** 8 tables in schema `procurement`, verified by 39 passing tests (ADRs 0001–0012, 0015–0017) |
 | 2 ✅ | Synthetic procurement generator with two tenants | Repeatable seeded dataset with valid relationships. **Done 2026-11-10:** seed 42 gives fingerprint `350d064e…` with 5,702 rows across both tenants. Loads under every DB constraint and round-trips exactly. 75 tests (ADR 0018) |
 | 3 ✅ | Terraform backend, AWS authentication, KMS, buckets, IAM, budget alerts | `terraform plan` succeeds; foundation deploys. **Done 2026-11-10** (ADR 0019): bootstrap (16) and dev/foundation (34) applied in `ca-central-1`. State is in S3, both stacks plan "No changes", every resource was checked through the AWS CLI, and 21 offline Terraform tests pass |
-| 4 | First public API/CSV ingestion with a manifest | Raw source data and metadata land in S3 |
+| 4 ✅ | First public API/CSV ingestion with a manifest | Raw source data and metadata land in S3. **Done 2026-11-10** (ADR 0020): live USAspending window 2026-10-23 landed in dev Bronze (56 pages, 5,542 records, reconciled with the source count). Manifest is in artifacts; checksums, encryption and immutability were verified in S3. 107 tests. The Canada CSV connector is still to do |
 | 5 | Glue Catalog and Athena; first integration tests | Bronze data is queryable; test evidence recorded |
 
 The sprint should end with a reproducible commit and a working foundation, not just a diagram.
