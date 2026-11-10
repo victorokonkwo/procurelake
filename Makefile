@@ -230,6 +230,34 @@ cdc-freshness: ## C5 gate, live: workload -> DMS -> CDC apply -> dbt build; per-
 	  --gold-database $$($(TFOUT) -raw gold_database_name) \
 	  --seed $(or $(SEED_WL),11) --operations $(or $(OPS),40)
 
+.PHONY: cdc-freshness-scheduled
+cdc-freshness-scheduled: ## C5/Week 6, live: workload only; the 5-minute schedule runs the pipeline; poll until visible
+	uv run python scripts/aws/cdc_freshness.py --scheduled \
+	  --host $$($(CDCOUT) -raw source_address) --port $$($(CDCOUT) -raw source_port) \
+	  --database $$($(CDCOUT) -raw source_database_name) \
+	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
+	  --task-arn $$($(CDCOUT) -raw replication_task_arn) \
+	  --glue-job $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw apply_cdc_job_name) \
+	  --engineer-role-arn $$($(TFOUT) -raw data_engineer_role_arn) \
+	  --workgroup $$($(TFOUT) -raw athena_workgroup_name) \
+	  --silver-database $$($(TFOUT) -raw silver_database_name) \
+	  --gold-database $$($(TFOUT) -raw gold_database_name) \
+	  --seed $(or $(SEED_WL),31) --operations $(or $(OPS),40)
+
+.PHONY: cdc-failure-drill
+cdc-failure-drill: ## Week 6, live: hold the invoices lease, watch a scheduled run fail + alert, then recover
+	uv run python scripts/aws/cdc_failure_drill.py \
+	  --host $$($(CDCOUT) -raw source_address) --port $$($(CDCOUT) -raw source_port) \
+	  --database $$($(CDCOUT) -raw source_database_name) \
+	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
+	  --state-machine-arn $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_processing_state_machine_arn) \
+	  --checkpoint-table $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_checkpoint_table_name) \
+	  --alerts-topic-arn $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw pipeline_alerts_topic_arn) \
+	  --engineer-role-arn $$($(TFOUT) -raw data_engineer_role_arn) \
+	  --workgroup $$($(TFOUT) -raw athena_workgroup_name) \
+	  --silver-database $$($(TFOUT) -raw silver_database_name) \
+	  --gold-database $$($(TFOUT) -raw gold_database_name)
+
 .PHONY: cdc-down
 cdc-down: ## Destroy the dev/cdc stack (asks for confirmation; Bronze data and state are kept)
 	terraform -chdir=$(CDC_TF) destroy -input=true -var enable_dms=true
