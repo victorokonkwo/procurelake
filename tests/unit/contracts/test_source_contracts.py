@@ -16,7 +16,16 @@ CONTRACTS_DIR = Path(__file__).resolve().parents[3] / "contracts" / "source"
 
 def test_committed_contracts_parse():
     contracts = load_contracts(CONTRACTS_DIR)
-    assert {c.name for c in contracts} == {"agencies", "suppliers", "awards", "invoices"}
+    assert {c.name for c in contracts} == {
+        "tenants",
+        "agencies",
+        "suppliers",
+        "solicitations",
+        "awards",
+        "purchase_orders",
+        "invoices",
+        "contract_documents",
+    }
     assert all(c.tenant_scoped and c.data_classification == "synthetic" for c in contracts)
 
 

@@ -1,0 +1,31 @@
+# Source contract: operational solicitations (procurement.solicitations, migration V0001).
+contract_version: 1
+name: solicitations
+source_system: procurelake_oltp
+physical: {system: postgresql, schema: procurement, table: solicitations}
+owner: procurement-platform
+description: >-
+  Calls for bids issued by an agency. published_at is required once the solicitation has left
+  draft (except cancelled-before-publication); closing_at is after published_at. Procurement
+  cycle time is measured from published_at to awards.awarded_at.
+grain: One row per solicitation.
+data_classification: synthetic
+tenant_scoped: true
+primary_key: [solicitation_id]
+foreign_keys:
+  - {columns: [tenant_id, agency_id], references_table: agencies, references_columns: [tenant_id, agency_id]}
+change_capture: {mode: cdc, source_updated_at_column: updated_at, deletes: hard}
+columns:
+  - {name: solicitation_id, type: uuid, nullable: false, description: Solicitation identifier.}
+  - {name: tenant_id, type: text, nullable: false, description: Owning tenant.}
+  - {name: agency_id, type: uuid, nullable: false, description: Issuing agency (same tenant).}
+  - {name: title, type: text, nullable: false, description: Solicitation title.}
+  - name: status
+    type: text
+    nullable: false
+    description: Solicitation lifecycle status.
+    allowed_values: [draft, published, closed, awarded, cancelled]
+  - {name: published_at, type: timestamptz, nullable: true, description: Publication time; null while draft.}
+  - {name: closing_at, type: timestamptz, nullable: true, description: Bid closing time; after published_at.}
+  - {name: created_at, type: timestamptz, nullable: false, description: Row creation time.}
+  - {name: updated_at, type: timestamptz, nullable: false, description: Last update time (trigger-maintained).}

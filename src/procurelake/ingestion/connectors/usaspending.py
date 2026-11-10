@@ -24,13 +24,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from importlib.metadata import PackageNotFoundError, version
 
+from procurelake.ingestion.batch import code_version, new_batch_id
 from procurelake.ingestion.http import HttpClient, HttpError
 from procurelake.ingestion.landing import LandingStore, ObjectAlreadyExistsError
 from procurelake.ingestion.manifest import (
@@ -77,19 +75,6 @@ FIELDS = (
     "Place of Performance State Code",
     "Place of Performance Country Code",
 )
-
-
-def _code_version() -> str:
-    try:
-        package_version = version("procurelake")
-    except PackageNotFoundError:
-        package_version = "unknown"
-    git_sha = os.environ.get("PROCURELAKE_GIT_SHA", "")
-    return f"{package_version}+{git_sha}" if git_sha else package_version
-
-
-def new_batch_id(now: datetime) -> str:
-    return f"{now.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
 
 
 @dataclass
@@ -244,7 +229,7 @@ class UsaspendingConnector:
                 passed=passed,
                 detail=detail,
             ),
-            code_version=_code_version(),
+            code_version=code_version(),
             error=error,
         )
         key = write_manifest(self.manifest_store, manifest)

@@ -1,0 +1,23 @@
+# Source contract: operational contract documents (procurement.contract_documents, migration V0001).
+contract_version: 1
+name: contract_documents
+source_system: procurelake_oltp
+physical: {system: postgresql, schema: procurement, table: contract_documents}
+owner: procurement-platform
+description: >-
+  Contract document references attached to an award. Empty until real public contract PDFs
+  are ingested (Week 9); document_s3_key is an object key without scheme or bucket.
+grain: One row per document.
+data_classification: synthetic
+tenant_scoped: true
+primary_key: [document_id]
+foreign_keys:
+  - {columns: [tenant_id, award_id], references_table: awards, references_columns: [tenant_id, award_id]}
+change_capture: {mode: cdc, source_updated_at_column: updated_at, deletes: hard}
+columns:
+  - {name: document_id, type: uuid, nullable: false, description: Document identifier.}
+  - {name: tenant_id, type: text, nullable: false, description: Owning tenant.}
+  - {name: award_id, type: uuid, nullable: false, description: Award the document belongs to (same tenant).}
+  - {name: document_s3_key, type: text, nullable: false, description: Object key in the documents prefix; unique; no s3:// scheme.}
+  - {name: created_at, type: timestamptz, nullable: false, description: Row creation time.}
+  - {name: updated_at, type: timestamptz, nullable: false, description: Last update time (trigger-maintained).}

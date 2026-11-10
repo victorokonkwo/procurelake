@@ -1,0 +1,30 @@
+# Source contract: operational purchase orders (procurement.purchase_orders, migration V0001).
+contract_version: 1
+name: purchase_orders
+source_system: procurelake_oltp
+physical: {system: postgresql, schema: procurement, table: purchase_orders}
+owner: procurement-platform
+description: >-
+  Purchase orders issued by an agency to a supplier. award_id is null for purchases with no
+  competitive award behind them. agency_id is carried so actual spend can be reported by agency.
+grain: One row per purchase order.
+data_classification: synthetic
+tenant_scoped: true
+primary_key: [po_id]
+foreign_keys:
+  - {columns: [tenant_id, agency_id], references_table: agencies, references_columns: [tenant_id, agency_id]}
+  - {columns: [tenant_id, supplier_id], references_table: suppliers, references_columns: [tenant_id, supplier_id]}
+  - {columns: [tenant_id, award_id], references_table: awards, references_columns: [tenant_id, award_id]}
+change_capture: {mode: cdc, source_updated_at_column: updated_at, deletes: hard}
+columns:
+  - {name: po_id, type: uuid, nullable: false, description: Purchase order identifier.}
+  - {name: tenant_id, type: text, nullable: false, description: Owning tenant.}
+  - {name: agency_id, type: uuid, nullable: false, description: Ordering agency (same tenant).}
+  - {name: supplier_id, type: uuid, nullable: false, description: Supplier (same tenant).}
+  - {name: award_id, type: uuid, nullable: true, description: Award the order draws on; null for purchases with no award.}
+  - {name: order_date, type: date, nullable: false, description: Order date.}
+  - {name: amount, type: "numeric(18,2)", nullable: false, description: Order value in currency_code; > 0.}
+  - {name: currency_code, type: char(3), nullable: false, description: ISO-4217-format currency of amount.}
+  - {name: status, type: text, nullable: false, description: Order lifecycle status., allowed_values: [open, closed, cancelled]}
+  - {name: created_at, type: timestamptz, nullable: false, description: Row creation time.}
+  - {name: updated_at, type: timestamptz, nullable: false, description: Last update time (trigger-maintained).}

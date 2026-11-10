@@ -1,0 +1,22 @@
+# Source contract: operational tenants (procurement.tenants, migration V0001).
+contract_version: 1
+name: tenants
+source_system: procurelake_oltp
+physical: {system: postgresql, schema: procurement, table: tenants}
+owner: procurement-platform
+description: >-
+  Customer tenants of the procurement SaaS. In this project every tenant is fictional and
+  is_synthetic is true.
+grain: One row per tenant.
+data_classification: synthetic
+tenant_scoped: true
+primary_key: [tenant_id]
+foreign_keys: []
+change_capture: {mode: cdc, source_updated_at_column: updated_at, deletes: hard}
+columns:
+  - {name: tenant_id, type: text, nullable: false, description: "Tenant slug, ^tenant_[a-z][a-z0-9_]*$ (e.g. tenant_alder)."}
+  - {name: tenant_name, type: text, nullable: false, description: Display name; unique.}
+  - {name: status, type: text, nullable: false, description: Tenant lifecycle status., allowed_values: [active, suspended, offboarded]}
+  - {name: is_synthetic, type: boolean, nullable: false, description: True for fictional tenants generated for this project.}
+  - {name: created_at, type: timestamptz, nullable: false, description: Row creation time.}
+  - {name: updated_at, type: timestamptz, nullable: false, description: Last update time (trigger-maintained).}

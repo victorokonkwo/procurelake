@@ -76,7 +76,8 @@ class IngestionManifest(BaseModel):
 
 
 def manifest_key(manifest: IngestionManifest) -> str:
-    window = manifest.window.start_date.isoformat() if manifest.window else "none"
+    # Windowed sources key by window start; full snapshots have no window.
+    window = manifest.window.start_date.isoformat() if manifest.window else "snapshot"
     return (
         f"{MANIFEST_ROOT}/{manifest.source_system}/{manifest.dataset}/"
         f"window_start={window}/batch_id={manifest.batch_id}/manifest.json"
