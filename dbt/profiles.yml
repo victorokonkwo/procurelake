@@ -1,0 +1,18 @@
+# Credentials come from the standard AWS chain. `make dbt-build` runs dbt with temporary
+# credentials for procurelake-<env>-data-engineer (scripts/aws/with_role.py). No secrets here.
+procurelake:
+  target: dev
+  outputs:
+    dev:
+      type: athena
+      region_name: "{{ env_var('AWS_REGION', 'ca-central-1') }}"
+      database: awsdatacatalog
+      schema: "{{ env_var('PROCURELAKE_GOLD_SCHEMA', 'procurelake_dev_gold') }}"
+      work_group: "{{ env_var('PROCURELAKE_ATHENA_WORKGROUP', 'procurelake-dev-engineering') }}"
+      # The workgroup enforces its own encrypted result location; dbt-athena still requires this.
+      # No defaults: these name account-specific buckets, so a missing value must fail loudly.
+      s3_staging_dir: "{{ env_var('PROCURELAKE_DBT_S3_STAGING_DIR') }}"
+      s3_data_dir: "{{ env_var('PROCURELAKE_DBT_S3_DATA_DIR') }}"
+      s3_data_naming: schema_table_unique
+      threads: 4
+      num_retries: 2

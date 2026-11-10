@@ -49,3 +49,4 @@ CLAUDE.md
 
 # Local ingestion output (make ingest-usaspending-local)
 local_lake/
+dbt/.user.yml

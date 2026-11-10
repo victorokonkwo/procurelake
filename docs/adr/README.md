@@ -31,5 +31,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0023 | Consistent PostgreSQL snapshot into Bronze | Accepted | [0023-postgres-snapshot-to-bronze.md](0023-postgres-snapshot-to-bronze.md) |
 | 0024 | Silver framework: validation, quarantine, Iceberg snapshot apply | Accepted | [0024-silver-framework.md](0024-silver-framework.md) |
 | 0025 | Silver Glue job: packaging, deployment, permissions | Accepted | [0025-silver-glue-job.md](0025-silver-glue-job.md) |
+| 0026 | dbt Gold on Athena: versions, materialization, deletes, runner | Accepted | [0026-dbt-gold.md](0026-dbt-gold.md) |
 
 Update the **ADR file** column as each ADR is written.

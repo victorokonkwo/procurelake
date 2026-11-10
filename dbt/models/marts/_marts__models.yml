@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: mart_awarded_value
+    description: >-
+      Awarded value (not spend) of active awards by tenant, agency, supplier, award month and
+      currency. Amounts in different currencies are never added together.
+    meta:
+      grain: one row per tenant_id, agency_id, supplier_id, award_month, currency_code
+      owner: procurement-analytics
+      freshness: "24h after the source snapshot"
+    data_tests:
+      - unique_combination:
+          arguments: {columns: [tenant_id, agency_id, supplier_id, award_month, currency_code]}
+    columns:
+      - name: awarded_value
+        data_tests: [not_null]
+
+  - name: mart_supplier_concentration
+    description: Each supplier's share of its tenant's awarded value, per currency (active awards, all time).
+    meta:
+      grain: one row per tenant_id, currency_code, supplier_id
+      owner: procurement-analytics
+      freshness: "24h after the source snapshot"
+    data_tests:
+      - unique_combination:
+          arguments: {columns: [tenant_id, currency_code, supplier_id]}
+    columns:
+      - name: awarded_value_share
+        data_tests: [not_null]
+
+  - name: mart_procurement_cycle_time
+    description: Days from solicitation publication to award, by tenant, agency and award month.
+    meta:
+      grain: one row per tenant_id, agency_id, award_month
+      owner: procurement-analytics
+      freshness: "24h after the source snapshot"
+    data_tests:
+      - unique_combination:
+          arguments: {columns: [tenant_id, agency_id, award_month]}
+
+  - name: mart_actual_spend
+    description: >-
+      Actual spend (cash paid on invoices) by tenant, agency, supplier, payment month and
+      currency. Not awarded value.
+    meta:
+      grain: one row per tenant_id, agency_id, supplier_id, paid_month, currency_code
+      owner: finance-analytics
+      freshness: "24h after the source snapshot"
+    data_tests:
+      - unique_combination:
+          arguments: {columns: [tenant_id, agency_id, supplier_id, paid_month, currency_code]}
+    columns:
+      - name: actual_spend
+        data_tests: [not_null]

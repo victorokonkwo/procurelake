@@ -1,0 +1,103 @@
+version: 2
+
+# Every Gold model documents grain, owner and freshness (AGENTS.md section 2.4); the freshness
+# value is a design target, measured from the source snapshot to Gold availability.
+models:
+  - name: dim_agency
+    description: Government agencies of each synthetic tenant.
+    meta: {grain: one row per agency_id, owner: data-platform, freshness: "24h after the source snapshot"}
+    columns:
+      - name: agency_id
+        data_tests: [unique, not_null]
+      - name: tenant_id
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: "source('silver', 'silver_tenants')", field: tenant_id}}
+
+  - name: dim_supplier
+    description: >-
+      Supplier registrations. One row per supplier_id within its tenant; no cross-tenant or
+      name-based matching yet.
+    meta: {grain: one row per supplier_id, owner: data-platform, freshness: "24h after the source snapshot"}
+    columns:
+      - name: supplier_id
+        data_tests: [unique, not_null]
+      - name: tenant_id
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: "source('silver', 'silver_tenants')", field: tenant_id}}
+
+  - name: dim_date
+    description: Calendar days covering every date used by the facts.
+    meta: {grain: one row per calendar day, owner: data-platform, freshness: "rebuilt with every Gold run"}
+    columns:
+      - name: date_day
+        data_tests: [unique, not_null]
+
+  - name: fct_contract_award
+    description: >-
+      Contract awards with their issuing agency and procurement cycle time. award_amount is
+      awarded value, not spend, in its own currency_code.
+    meta: {grain: one row per award_id, owner: procurement-analytics, freshness: "24h after the source snapshot"}
+    columns:
+      - name: award_id
+        data_tests: [unique, not_null]
+      - name: agency_id
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('dim_agency'), field: agency_id}}
+      - name: supplier_id
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('dim_supplier'), field: supplier_id}}
+      - name: award_date
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_date'), field: date_day}}
+      - name: award_status
+        data_tests:
+          - accepted_values: {arguments: {values: [active, cancelled]}}
+      - name: currency_code
+        data_tests: [not_null]
+      - name: source_line_hash
+        description: SHA-256 of the Bronze line this row came from (lineage to source).
+        data_tests: [not_null]
+
+  - name: fct_purchase_order
+    description: Purchase orders, optionally drawn on an award, in their own currency.
+    meta: {grain: one row per po_id, owner: finance-analytics, freshness: "24h after the source snapshot"}
+    columns:
+      - name: po_id
+        data_tests: [unique, not_null]
+      - name: agency_id
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_agency'), field: agency_id}}
+      - name: supplier_id
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_supplier'), field: supplier_id}}
+      - name: award_id
+        data_tests:
+          - relationships: {arguments: {to: ref('fct_contract_award'), field: award_id}}
+      - name: order_date
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_date'), field: date_day}}
+      - name: po_status
+        data_tests:
+          - accepted_values: {arguments: {values: [open, closed, cancelled]}}
+
+  - name: fct_invoice
+    description: >-
+      Invoices with the agency and supplier of their purchase order. paid_amount is cash paid to
+      date (actual spend).
+    meta: {grain: one row per invoice_id, owner: finance-analytics, freshness: "24h after the source snapshot"}
+    columns:
+      - name: invoice_id
+        data_tests: [unique, not_null]
+      - name: po_id
+        data_tests:
+          - relationships: {arguments: {to: ref('fct_purchase_order'), field: po_id}}
+      - name: invoice_date
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_date'), field: date_day}}
+      - name: payment_status
+        data_tests:
+          - accepted_values: {arguments: {values: [pending, partially_paid, paid, cancelled]}}

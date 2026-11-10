@@ -41,6 +41,10 @@ run "wires_catalog_and_workgroup" {
     error_message = "Silver database must be named procurelake_dev_silver."
   }
   assert {
+    condition     = output.gold_database_name == "procurelake_dev_gold"
+    error_message = "Gold database must be named procurelake_dev_gold."
+  }
+  assert {
     condition     = output.athena_workgroup_name == "procurelake-dev-engineering"
     error_message = "Engineering workgroup must be named procurelake-dev-engineering."
   }

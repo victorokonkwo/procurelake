@@ -57,3 +57,9 @@ variable "glue_database_names" {
   type        = list(string)
   default     = []
 }
+
+variable "glue_writable_database_names" {
+  description = "Glue databases whose tables the data engineer may create, replace and drop (dbt Gold)."
+  type        = list(string)
+  default     = []
+}

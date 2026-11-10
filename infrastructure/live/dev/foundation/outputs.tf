@@ -32,3 +32,8 @@ output "silver_database_name" {
   description = "Glue database for Silver Iceberg tables."
   value       = module.catalog.silver_database_name
 }
+
+output "gold_database_name" {
+  description = "Glue database for Gold models (dbt target schema)."
+  value       = module.catalog.gold_database_name
+}

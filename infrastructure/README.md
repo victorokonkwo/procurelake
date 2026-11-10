@@ -9,7 +9,7 @@ infrastructure/
 │   ├── budgets/  kms/  s3_lakehouse/  iam/  glue_catalog/  athena/  glue_spark_job/
 └── live/dev/
     ├── foundation/            # data KMS key, 4 lakehouse buckets, workload roles,
-    │                          #   Bronze + Silver Glue databases, engineering Athena workgroup
+    │                          #   Bronze/Silver/Gold Glue databases, engineering Athena workgroup
     └── data_platform/         # Glue jobs (Bronze -> Silver), reading foundation's remote state
 ```
 

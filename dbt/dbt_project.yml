@@ -1,0 +1,35 @@
+# ProcureLake Gold (ADR 0005, ADR 0026): dbt-core 1.12.6 + dbt-athena 1.11.1 on Athena engine v3.
+name: procurelake
+version: "0.1.0"
+config-version: 2
+profile: procurelake
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: target
+clean-targets: [target, dbt_packages, logs]
+
+models:
+  procurelake:
+    # Staging is ephemeral (compiled into Gold models as CTEs). Athena views are stored in Glue
+    # with Hive column types, which cannot express timestamp(6), so staging is not stored at all.
+    staging:
+      +materialized: ephemeral
+    # Gold: Iceberg tables rebuilt in full each run (ADR 0026: exact and delete-safe at this
+    # scale; incremental merge arrives with CDC in Week 6). dbt-athena requires a unique
+    # location for Iceberg `table` builds because it swaps tables by rename.
+    core:
+      +materialized: table
+      +table_type: iceberg
+      +format: parquet
+      +s3_data_naming: schema_table_unique
+    marts:
+      +materialized: table
+      +table_type: iceberg
+      +format: parquet
+      +s3_data_naming: schema_table_unique
+
+tests:
+  procurelake:
+    +severity: error

@@ -30,6 +30,9 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      # dbt Gold project: parse offline (no AWS); placeholder buckets are never contacted.
+      - run: uv sync --locked --group dbt
+      - run: make dbt-parse
 
   test:
     name: test (pytest + PostgreSQL 17)

@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: silver
+    description: >-
+      Silver Apache Iceberg tables built from consistent PostgreSQL snapshots by the Glue job
+      procurelake-<env>-bronze-to-silver (ADR 0024, ADR 0025). One row per source primary key;
+      keys deleted at the source are removed. Tenants are fictional and synthetic.
+    # Glue database holding the Silver Iceberg tables (built by the Glue job, ADR 0025).
+    schema: "{{ env_var('PROCURELAKE_SILVER_SCHEMA', 'procurelake_dev_silver') }}"
+    meta:
+      owner: data-platform
+    tables:
+      - name: silver_tenants
+        columns:
+          - name: tenant_id
+            data_tests: [unique, not_null]
+          - name: is_synthetic
+            description: Every tenant in this project is fictional (AGENTS.md section 2.3).
+            data_tests:
+              - accepted_values:
+                  arguments: {values: [true], quote: false}
+      - name: silver_agencies
+      - name: silver_suppliers
+      - name: silver_solicitations
+      - name: silver_awards
+      - name: silver_purchase_orders
+      - name: silver_invoices

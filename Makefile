@@ -131,6 +131,25 @@ ingest-usaspending-local: ## Ingest one settled day into ./local_lake (no AWS) (
 TFOUT = terraform -chdir=$(DEV_TF) output
 BUCKET = $$($(TFOUT) -json bucket_names | uv run python -c "import sys,json;print(json.load(sys.stdin)['$(1)'])")
 
+# dbt Gold (ADR 0026): runs as the data-engineer role with temporary credentials.
+DBT_DIRS = --project-dir dbt --profiles-dir dbt
+
+.PHONY: dbt-parse
+dbt-parse: ## dbt parse (offline; no AWS access)
+	PROCURELAKE_DBT_S3_STAGING_DIR=s3://example-bucket/athena_results/ \
+	PROCURELAKE_DBT_S3_DATA_DIR=s3://example-bucket/gold/ \
+	uv run --group dbt dbt parse $(DBT_DIRS)
+
+.PHONY: dbt-build
+dbt-build: ## dbt build (Gold models + tests) on dev Athena as the data-engineer role
+	PROCURELAKE_DBT_S3_STAGING_DIR=s3://$(call BUCKET,artifacts)/athena_results/ \
+	PROCURELAKE_DBT_S3_DATA_DIR=s3://$(call BUCKET,lake)/gold/ \
+	PROCURELAKE_GOLD_SCHEMA=$$($(TFOUT) -raw gold_database_name) \
+	PROCURELAKE_SILVER_SCHEMA=$$($(TFOUT) -raw silver_database_name) \
+	PROCURELAKE_ATHENA_WORKGROUP=$$($(TFOUT) -raw athena_workgroup_name) \
+	uv run --group dbt python scripts/aws/with_role.py $$($(TFOUT) -raw data_engineer_role_arn) -- \
+	  uv run --group dbt dbt build $(DBT_DIRS)
+
 .PHONY: test-aws
 test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evidence in build/evidence/
 	PROCURELAKE_AWS_TESTS=1 \
@@ -141,6 +160,8 @@ test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evide
 	PROCURELAKE_DEV_DATA_ENGINEER_ROLE_ARN=$$($(TFOUT) -raw data_engineer_role_arn) \
 	PROCURELAKE_DEV_ATHENA_WORKGROUP=$$($(TFOUT) -raw athena_workgroup_name) \
 	PROCURELAKE_DEV_BRONZE_DATABASE=$$($(TFOUT) -raw bronze_database_name) \
+	PROCURELAKE_DEV_SILVER_DATABASE=$$($(TFOUT) -raw silver_database_name) \
+	PROCURELAKE_DEV_GOLD_DATABASE=$$($(TFOUT) -raw gold_database_name) \
 	uv run pytest -m aws -v --junitxml=build/test-results/aws-integration.xml tests/integration/aws
 
 .PHONY: test-unit

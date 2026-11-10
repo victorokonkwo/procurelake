@@ -58,5 +58,11 @@ module "iam" {
   bucket_arns           = module.lakehouse.bucket_arns
   kms_key_arn           = module.data_key.key_arn
   athena_workgroup_arns = [module.athena.workgroup_arn]
-  glue_database_names   = [module.catalog.bronze_database_name, module.catalog.silver_database_name]
+  glue_database_names = [
+    module.catalog.bronze_database_name,
+    module.catalog.silver_database_name,
+    module.catalog.gold_database_name,
+    module.catalog.gold_staging_database_name,
+  ]
+  glue_writable_database_names = [module.catalog.gold_database_name, module.catalog.gold_staging_database_name]
 }

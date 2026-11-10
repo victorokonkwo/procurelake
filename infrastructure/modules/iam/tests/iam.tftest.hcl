@@ -133,3 +133,34 @@ run "no_query_policy_without_workgroups" {
     error_message = "Query policy must not exist when no workgroups are given."
   }
 }
+
+run "build_access_is_limited_to_writable_databases" {
+  command = apply
+
+  variables {
+    glue_writable_database_names = ["procurelake_dev_gold"]
+  }
+
+  assert {
+    condition = toset(flatten([for s in jsondecode(aws_iam_role_policy.data_engineer_build[0].policy).Statement : s.Resource])) == toset([
+      "arn:aws:glue:ca-central-1:123456789012:catalog",
+      "arn:aws:glue:ca-central-1:123456789012:database/procurelake_dev_gold",
+      "arn:aws:glue:ca-central-1:123456789012:table/procurelake_dev_gold/*",
+    ])
+    error_message = "Catalog writes must be limited to the Gold databases (never Bronze or Silver)."
+  }
+  assert {
+    condition = alltrue([for s in jsondecode(aws_iam_role_policy.data_engineer_build[0].policy).Statement :
+    !contains(flatten([s.Action]), "glue:CreateDatabase") && !contains(flatten([s.Action]), "glue:DeleteDatabase")])
+    error_message = "Databases are owned by Terraform, not dbt."
+  }
+}
+
+run "no_build_policy_without_writable_databases" {
+  command = apply
+
+  assert {
+    condition     = length(aws_iam_role_policy.data_engineer_build) == 0
+    error_message = "Build policy must not exist when no writable databases are given."
+  }
+}

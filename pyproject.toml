@@ -35,6 +35,11 @@ dev = [
     "pytest-httpserver>=1.2.0",
     "ruff>=0.17.4",
 ]
+# dbt Gold project (ADR 0026), outside the Glue wheel: `uv sync --group dbt` (make dbt-* targets).
+dbt = [
+    "dbt-core==1.12.6",
+    "dbt-athena==1.11.1",
+]
 
 [tool.ruff]
 line-length = 110

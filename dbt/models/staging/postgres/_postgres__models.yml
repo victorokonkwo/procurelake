@@ -1,0 +1,20 @@
+version: 2
+
+# Ephemeral: these compile into the core models as CTEs, so dbt cannot test them directly.
+# Their keys are tested where they surface (dim_*, fct_*), and row counts are reconciled to
+# Silver (tests/assert_facts_keep_every_silver_row.sql).
+models:
+  - name: stg_postgres__tenants
+    description: Silver tenants, renamed and typed for Gold. Tenants are fictional and synthetic.
+  - name: stg_postgres__agencies
+    description: Silver agencies.
+  - name: stg_postgres__suppliers
+    description: Silver supplier registrations.
+  - name: stg_postgres__solicitations
+    description: Silver solicitations.
+  - name: stg_postgres__awards
+    description: Silver awards (awarded value, not spend).
+  - name: stg_postgres__purchase_orders
+    description: Silver purchase orders.
+  - name: stg_postgres__invoices
+    description: Silver invoices.

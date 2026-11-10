@@ -12,3 +12,13 @@ output "silver_database_name" {
   description = "Glue database for Silver Iceberg tables."
   value       = aws_glue_catalog_database.silver.name
 }
+
+output "gold_database_name" {
+  description = "Glue database for Gold models."
+  value       = aws_glue_catalog_database.gold.name
+}
+
+output "gold_staging_database_name" {
+  description = "Glue database for dbt staging and intermediate views."
+  value       = aws_glue_catalog_database.gold_staging.name
+}

@@ -4,7 +4,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 
 ## Tooling and versions
 1. ~~Python version and Glue runtime~~ **Resolved: ADR 0015** (Glue 5.1, Python 3.11, PostgreSQL 17).
-2. **Pinned versions** for dbt-core, dbt-athena, and dbt packages (`packages.yml`). (Python dependencies are pinned in `uv.lock`. Terraform and the AWS provider are pinned in ADR 0019.)
+2. ~~Pinned versions for dbt~~ **Resolved: ADR 0026** (dbt-core 1.12.6, dbt-athena 1.11.1; no dbt packages yet: pin any added package in `packages.yml` with an ADR).
 3. **Iceberg integration in Glue:** which Glue job configuration is used to read and write Iceberg tables (check the current Glue docs for the chosen Glue version).
 4. ~~Local Glue testing approach~~ **Resolved: ADR 0024** (local PySpark 3.5.6 + Iceberg 1.10.0 + Java 17, matching Glue 5.1; a live Glue run verifies the AWS side).
 5. **Security scanning tools** for `ci-security.yml` (Python dependency, Terraform/IaC, and full-history secrets scanning). The pre-commit hooks cover only private keys and AWS credentials in staged files.
@@ -12,8 +12,8 @@ These are decisions the planning documents **do not make**. Agents and contribut
 
 ## Data model
 7. ~~Full OLTP column lists~~ **Resolved: ADR 0016.**
-8. **Late-arrival policy:** the lookback window for incremental dbt models and how late or out-of-order CDC events are resolved (for example, ordering by source commit timestamp plus a tiebreaker).
-9. **Delete semantics in Gold:** hard removal vs. a soft-delete flag in current-state models, and how tombstones propagate from Silver.
+8. **Late-arrival policy:** the lookback window for incremental dbt models and how late or out-of-order CDC events are resolved (for example, ordering by source commit timestamp plus a tiebreaker). *Week 4 uses full Iceberg rebuilds (ADR 0026), so this is needed when incremental merge arrives with CDC in Week 6.*
+9. ~~Delete semantics in Gold~~ **Resolved: ADR 0026** (hard removal; history via Iceberg snapshots).
 10. **Exchange-rate source and conversion policy** for any cross-currency reporting.
 11. **Supplier canonicalization rules** for `dim_supplier` (one canonical supplier), especially across tenants and public reference data.
 12. **How public reference data relates to tenant data.** Is it joined into tenant products, kept separate, or exposed only to the admin product?
@@ -22,7 +22,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 ## Platform
 14. **Freshness objective for the C5 gate:** the plan's initial SLI target is 15 minutes for 95% of changes. Confirm it is the gate threshold.
 15. **Locking mechanism** to prevent overlapping writers per target table (for example, a DynamoDB conditional write). Not yet specified.
-16. **Where dbt runs:** a container (`jobs/containers/dbt_runner/`) on which compute service, triggered by Step Functions.
+16. **Where dbt runs:** a container (`jobs/containers/dbt_runner/`) on which compute service, triggered by Step Functions. *Until Week 6: locally as the data-engineer role (`make dbt-build`, ADR 0026).*
 17. **Networking:** VPC layout for RDS and DMS that avoids an unnecessary NAT gateway, and how Glue reaches the sources.
 18. **Bedrock model choice** and Region availability in `ca-central-1` for that model. Also whether Textract features needed are available in `ca-central-1`.
 19. **Human review queue:** where it lives and how approvals are recorded.
@@ -38,6 +38,9 @@ These are decisions the planning documents **do not make**. Agents and contribut
 32. **Glue dependency source.** The Silver job installs exact pins from PyPI at every run start (ADR 0025). Decide whether to host the dependency wheels in the artifacts bucket (`.gluewheels.zip` with `--no-index`) to remove the runtime dependency on PyPI.
 33. **Glue log encryption.** `/aws-glue/jobs/{error,output}` use CloudWatch default encryption. Decide whether to use a KMS key (needs a Glue security configuration and `logs:AssociateKmsKey`).
 34. **USAspending in Silver.** Only the operational tables are in Silver. Decide the Silver grain and dedup for USAspending batches (ties to item 30).
+
+35. **Canonical supplier.** `dim_supplier` is one row per supplier registration within a tenant. Decide whether, and how, suppliers are matched across tenants or names (an entity-resolution policy) before any cross-tenant supplier reporting.
+36. **`gold_staging` database.** Staging is ephemeral (ADR 0026), so `procurelake_dev_gold_staging` is empty. Keep it for materialized intermediate models, or remove it (and its IAM grants) in the next foundation change.
 
 ## Naming inconsistencies between the source documents
 23. ~~Cycle-time mart name~~ **Resolved: ADR 0017** (`mart_procurement_cycle_time`).

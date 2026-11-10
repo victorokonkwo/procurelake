@@ -201,3 +201,38 @@ resource "aws_iam_role_policy" "data_engineer_query" {
     ]
   })
 }
+
+# dbt-athena builds Gold with Athena CTAS/views and swaps Iceberg tables through the Glue API.
+# The Glue calls below are the ones the dbt-athena 1.11.1 adapter makes (read from its source,
+# ADR 0026), restricted to the Gold databases. No CreateDatabase: Terraform owns the databases.
+locals {
+  glue_writable_arns = concat(
+    [for db in var.glue_writable_database_names : "arn:aws:glue:${var.region}:${var.aws_account_id}:database/${db}"],
+    [for db in var.glue_writable_database_names : "arn:aws:glue:${var.region}:${var.aws_account_id}:table/${db}/*"],
+  )
+}
+
+resource "aws_iam_role_policy" "data_engineer_build" {
+  count = length(var.glue_writable_database_names) > 0 ? 1 : 0
+
+  name = "data-engineer-build"
+  role = aws_iam_role.data_engineer.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ManageGoldTables"
+        Effect = "Allow"
+        Action = [
+          "glue:CreateTable",
+          "glue:UpdateTable",
+          "glue:DeleteTable",
+          "glue:GetTableVersions",
+          "glue:DeleteTableVersion",
+          "glue:BatchDeleteTableVersion",
+        ]
+        Resource = concat(["arn:aws:glue:${var.region}:${var.aws_account_id}:catalog"], local.glue_writable_arns)
+      },
+    ]
+  })
+}

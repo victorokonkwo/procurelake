@@ -69,3 +69,18 @@ resource "aws_glue_catalog_database" "silver" {
   description  = "ProcureLake ${var.environment} Silver: validated, deduplicated Apache Iceberg tables."
   location_uri = "s3://${var.lake_bucket_name}/silver/"
 }
+
+# Gold: dbt on Athena (ADR 0005, ADR 0026). `gold` holds the governed dimensions, facts and marts;
+# `gold_staging` holds dbt's staging and intermediate views, kept apart so consumers are only
+# ever granted `gold`. dbt creates the tables; Terraform only owns the databases.
+resource "aws_glue_catalog_database" "gold" {
+  name         = "${var.name_prefix}_gold"
+  description  = "ProcureLake ${var.environment} Gold: governed dimensions, facts and marts (dbt)."
+  location_uri = "s3://${var.lake_bucket_name}/gold/"
+}
+
+resource "aws_glue_catalog_database" "gold_staging" {
+  name         = "${var.name_prefix}_gold_staging"
+  description  = "ProcureLake ${var.environment} dbt staging and intermediate views (not for consumers)."
+  location_uri = "s3://${var.lake_bucket_name}/gold_staging/"
+}
