@@ -32,10 +32,10 @@ These are decisions the planning documents **do not make**. Agents and contribut
 27. **Least-privilege deploy role.** `procurelake-github-deploy-dev` uses `AdministratorAccess` (scoped by trust to the GitHub `dev` environment only). Replace it with a scoped policy in the Week 10 security review.
 28. **S3 Object Lock for Bronze.** Today immutability relies on versioning plus an IAM delete denial. Decide whether to adopt Object Lock, which must be enabled when a bucket is created, before any production use.
 29. **Human AWS access.** Dev was deployed with IAM user `victoroko` (a long-lived access key plus temporary `AdministratorAccess`). Move to IAM Identity Center (SSO), remove the user's `AdministratorAccess`, and rotate or delete the access key.
+30. **Re-collection policy for settled windows.** USAspending records can change after the 10-day settling period. Decide on a periodic re-sweep (for example, the trailing 30 days weekly) and how Silver picks among several batches for the same window (latest succeeded batch, or dedup by `generated_internal_id` plus `Last Modified Date`).
 
 ## Naming inconsistencies between the source documents
 23. ~~Cycle-time mart name~~ **Resolved: ADR 0017** (`mart_procurement_cycle_time`).
 24. ~~Bronze Postgres prefix~~ **Resolved: ADR 0017** (`bronze/postgres/`). How full-load and CDC output are laid out is deferred to ADR 0014 (Week 5).
 25. ~~Terraform layout~~ **Resolved: ADR 0017** (`infrastructure/live/`).
 26. ~~Package root~~ **Resolved: ADR 0017** (`src/procurelake/`).
-30. **Re-collection policy for settled windows.** USAspending records can change after the 10-day settling period. Decide on a periodic re-sweep (for example, the trailing 30 days weekly) and how Silver picks among several batches for the same window (latest succeeded batch, or dedup by `generated_internal_id` plus `Last Modified Date`).
