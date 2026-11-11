@@ -2,3 +2,6 @@
 aws_account_id = "123456789012"
 # State bucket from bootstrap (same as in backend.hcl); used to read dev/foundation outputs.
 state_bucket = "procurelake-tfstate-123456789012-ca-central-1"
+
+# Who may assume the tenant/admin/AI roles (ADR 0037).
+operator_arns = ["arn:aws:iam::123456789012:user/operator"]

@@ -115,4 +115,5 @@ and `observability`, in that order. Bootstrap and `dev/cdc` stay manual.
 - The GitHub `procurelake-github-deploy-dev` role is scoped (ADR 0036): `ReadOnlyAccess` plus writes limited to
   `procurelake-dev` resources. Inline role policies and `lakeformation:*` remain broad; permissions
   boundaries are a follow-up.
-- There's no Terraform linter or security scanner in the toolchain yet (`docs/open-questions.md` item 5).
+- Checkov runs in `ci-security` (ADR 0037). Its repository-wide skips in `.checkov.yaml` are dev-scope
+  choices (no replication, access logs, flow logs or customer-managed log keys) to revisit before production.

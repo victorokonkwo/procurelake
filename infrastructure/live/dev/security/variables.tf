@@ -52,3 +52,13 @@ variable "exports_schedule" {
   type        = string
   default     = "cron(0 6 * * ? *)"
 }
+
+variable "operator_arns" {
+  description = "IAM principals of the human operators allowed to assume the consumer and AI roles (ADR 0037). CI passes the same list."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.operator_arns) > 0 && alltrue([for a in var.operator_arns : can(regex("^arn:aws:iam::[0-9]{12}:(user|role)/", a))])
+    error_message = "operator_arns must be IAM user or role ARNs."
+  }
+}

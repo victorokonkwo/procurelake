@@ -424,7 +424,8 @@ resource "aws_iam_role_policy" "dbt_transformation" {
     Statement = [
       # Step Functions docs, "Run a Job (.sync)" policy for Amazon ECS.
       { Sid = "RunDbtTask", Effect = "Allow", Action = "ecs:RunTask", Resource = module.dbt_runner.task_definition_arn },
-      { Sid = "TrackTask", Effect = "Allow", Action = ["ecs:StopTask", "ecs:DescribeTasks"], Resource = "*" },
+      # Tasks of the dbt cluster only (the docs' example uses "*"; ADR 0037).
+      { Sid = "TrackTask", Effect = "Allow", Action = ["ecs:StopTask", "ecs:DescribeTasks"], Resource = "${replace(module.dbt_runner.cluster_arn, ":cluster/", ":task/")}/*" },
       {
         Sid      = "SyncRule"
         Effect   = "Allow"
@@ -576,15 +577,17 @@ locals {
 }
 
 resource "aws_iam_role" "ai_extraction" {
+  # checkov:skip=CKV_AWS_61: trust limited by an aws:PrincipalArn condition to the operator (ADR 0037); Checkov ignores conditions
   name        = "${local.name_prefix}-ai-extraction"
   description = "Contract extraction: Textract, Bedrock (Canada profile), review queue, silver_contract_intelligence."
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid       = "AllowAccountPrincipals"
+      Sid       = "AllowOperators"
       Effect    = "Allow"
       Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
       Action    = "sts:AssumeRole"
+      Condition = { ArnEquals = { "aws:PrincipalArn" = var.operator_arns } } # ADR 0037
     }]
   })
   max_session_duration = 3600

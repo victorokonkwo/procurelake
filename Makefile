@@ -90,6 +90,12 @@ tf-validate: ## terraform init (no backend) + validate for every module and root
 tf-test: tf-validate ## terraform test with a mock AWS provider (offline, creates nothing)
 	@set -e; for d in $(TF_DIRS); do echo "== $$d"; terraform -chdir=$$d test; done
 
+.PHONY: security-scan
+security-scan: ## Checkov (Terraform) and pip-audit (uv.lock), the versions ci-security pins (ADR 0037); gitleaks runs in CI
+	uvx --from checkov==3.3.30 checkov --config-file .checkov.yaml
+	@mkdir -p build && uv export --frozen --all-groups --no-emit-project -o build/requirements-audit.txt >/dev/null
+	uvx --from pip-audit==2.10.1 pip-audit -r build/requirements-audit.txt --disable-pip --require-hashes --progress-spinner off
+
 .PHONY: bootstrap-plan
 bootstrap-plan: ## Plan the bootstrap stack (needs AWS credentials + terraform.tfvars)
 	terraform -chdir=infrastructure/bootstrap init -input=false

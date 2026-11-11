@@ -43,6 +43,9 @@ EOF
   {
     echo "aws_account_id = \"${AWS_ACCOUNT_ID}\""
     [[ "$root" == foundation ]] || echo "state_bucket = \"${STATE_BUCKET}\""
+    if [[ "$root" == security || "$root" == data_platform ]]; then
+      echo "operator_arns = [\"${ACCOUNT_ARN}:${DATA_LAKE_OPERATOR}\"]"
+    fi
     if [[ "$root" == security ]]; then
       # Must match the operator's local tfvars: the settings resource replaces the whole list.
       echo "data_lake_admin_arns = [\"${ACCOUNT_ARN}:${DATA_LAKE_OPERATOR}\", \"${ACCOUNT_ARN}:role/procurelake-github-deploy-dev\"]"
