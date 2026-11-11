@@ -25,7 +25,7 @@ Source: the ProcureLake "Principal Data Engineer Implementation Plan" and "Produ
 | 7 | Multi-tenant data products | Lake Formation policies, tenant roles, Athena workgroups, BI, exports | Two isolated tenant analytics experiences |
 | 8 | Reliability & governance | CloudWatch, alarms, reconciliation, incident simulation, catalog, lineage | Operational dashboard and recovery evidence |
 | 9 | AI procurement intelligence | Document processing, Bedrock extraction, validation, curated AI models | Working document-to-Gold pipeline |
-| 10 | Optimization & release | Load tests, Iceberg maintenance, security checks, CI/CD, cost review, demo | Complete portfolio and interview demo |
+| 10 | Optimization & release | Load tests, Iceberg maintenance, security checks, CI/CD, cost review, demo | Complete portfolio and interview demo. **In progress:** Iceberg compaction and retention live 2026-11-11 (ADR 0033, `docs/evidence/sprint1-week10-iceberg-maintenance-live.md`): dbt post-hook plus a daily Glue job; the bloated marts went from 47 data + 47 delete files to 1, live rows unchanged, tenant tests 27/27. Snapshot expiry by the scheduled job is still to be observed (first run 2026-11-12). Partition evolution and query pruning not started |
 
 ---
 

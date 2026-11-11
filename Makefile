@@ -155,6 +155,11 @@ silver-run: ## Run the Bronze->Silver Glue job on the latest complete snapshot b
 	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw bronze_to_silver_job_name) \
 	  $(if $(BATCH),--arg=--batch-id=$(BATCH),)
 
+.PHONY: iceberg-maintenance-run
+iceberg-maintenance-run: ## Run the daily Iceberg maintenance job now (retention, OPTIMIZE, VACUUM; ADR 0033) and wait; report in artifacts/iceberg_maintenance/
+	uv run python scripts/aws/run_glue_job.py \
+	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw iceberg_maintenance_job_name)
+
 DEV_TF := infrastructure/live/dev/foundation
 
 .PHONY: ingest-usaspending

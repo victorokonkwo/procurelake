@@ -1,6 +1,6 @@
 {{ config(
     unique_key=['tenant_id', 'agency_id', 'supplier_id', 'paid_month', 'currency_code'],
-    post_hook="{{ delete_vanished_keys(['tenant_id', 'agency_id', 'supplier_id', 'paid_month', 'currency_code']) }}",
+    post_hook=["{{ delete_vanished_keys(['tenant_id', 'agency_id', 'supplier_id', 'paid_month', 'currency_code']) }}", "{{ optimize_iceberg() }}"],
 ) }}
 
 -- Actual spend: cash paid on invoices (paid_amount > 0), by tenant, agency, supplier, payment

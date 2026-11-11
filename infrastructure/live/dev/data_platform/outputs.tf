@@ -52,3 +52,8 @@ output "ai_review_table_name" {
   description = "DynamoDB review queue for contract extraction."
   value       = aws_dynamodb_table.ai_review.name
 }
+
+output "iceberg_maintenance_job_name" {
+  description = "Daily Iceberg maintenance Glue job (make iceberg-maintenance-run)."
+  value       = module.iceberg_maintenance.job_name
+}

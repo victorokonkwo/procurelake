@@ -220,3 +220,43 @@ run "ai_profile_must_be_canadian" {
   }
   expect_failures = [var.ai_inference_profile_id]
 }
+
+run "iceberg_maintenance_is_scheduled_alerting_and_cannot_touch_bronze" {
+  command = apply
+
+  assert {
+    condition     = module.iceberg_maintenance.job_arguments_for_test["--silver-max-age-seconds"] == "604800" && module.iceberg_maintenance.job_arguments_for_test["--silver-min-snapshots"] == "10" && module.iceberg_maintenance.job_arguments_for_test["--gold-max-age-seconds"] == "86400" && module.iceberg_maintenance.job_arguments_for_test["--gold-min-snapshots"] == "5"
+    error_message = "Retention must match the owner decision: Silver 7 days/10 snapshots, Gold 1 day/5."
+  }
+  assert {
+    condition     = alltrue([for t in split(",", module.iceberg_maintenance.job_arguments_for_test["--leased-tables"]) : contains(split(",", module.iceberg_maintenance.job_arguments_for_test["--silver-tables"]), t)])
+    error_message = "Leased tables must be maintained Silver tables."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(local.maintenance_policy).Statement :
+    s.Effect == "Deny" && s.Action == "s3:*" && contains(s.Resource, "arn:aws:s3:::procurelake-dev-raw-123456789012-ca-central-1/*")])
+    error_message = "Maintenance must be denied all access to Bronze."
+  }
+  assert {
+    condition = jsonencode(one([for s in jsondecode(local.maintenance_policy).Statement :
+    s.Condition["ForAllValues:StringEquals"]["dynamodb:LeadingKeys"] if s.Sid == "CdcWriterLease"])) == jsonencode(var.maintenance_leased_tables)
+    error_message = "Maintenance may only take the CDC lease of the tables it maintains under lease."
+  }
+  assert {
+    condition     = aws_scheduler_schedule.iceberg_maintenance.schedule_expression_timezone == "America/Toronto" && jsondecode(aws_scheduler_schedule.iceberg_maintenance.target[0].input).JobName == "procurelake-dev-iceberg-maintenance"
+    error_message = "The daily schedule must start the maintenance job."
+  }
+  assert {
+    condition     = jsondecode(aws_cloudwatch_event_rule.maintenance_failed.event_pattern).detail.jobName == ["procurelake-dev-iceberg-maintenance"] && aws_cloudwatch_event_target.maintenance_failed.arn == aws_sns_topic.pipeline_alerts.arn
+    error_message = "A failed maintenance run must alert the pipeline topic."
+  }
+}
+
+run "silver_retention_cannot_be_under_a_day" {
+  command = plan
+
+  variables {
+    silver_snapshot_retention = { max_age_seconds = 3600, min_snapshots = 10 }
+  }
+  expect_failures = [var.silver_snapshot_retention]
+}

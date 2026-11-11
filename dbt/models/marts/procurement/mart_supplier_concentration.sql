@@ -1,6 +1,6 @@
 {{ config(
     unique_key=['tenant_id', 'currency_code', 'supplier_id'],
-    post_hook="{{ delete_vanished_keys(['tenant_id', 'currency_code', 'supplier_id']) }}",
+    post_hook=["{{ delete_vanished_keys(['tenant_id', 'currency_code', 'supplier_id']) }}", "{{ optimize_iceberg() }}"],
 ) }}
 
 -- Each supplier's share of a tenant's awarded value (active awards, all time), per currency.

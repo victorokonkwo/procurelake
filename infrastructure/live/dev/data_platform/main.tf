@@ -692,3 +692,186 @@ resource "aws_iam_role_policy" "ai_extraction" {
     ]
   })
 }
+
+# ----------------------------------------------------------------------------- Iceberg maintenance
+# Week 10, ADR 0033 (owner decisions 2026-11-11): daily retention + OPTIMIZE + VACUUM through
+# Athena for every Silver table and the merge-built Gold marts (dbt also compacts each mart after
+# its merge). Silver keeps 7 days of snapshots (at least 10), Gold marts 1 day (at least 5).
+# Silver tables the CDC job writes are maintained only under that table's CDC lease.
+locals {
+  maintenance_job   = "${local.name_prefix}-iceberg-maintenance"
+  gold_db           = local.foundation.gold_database_name
+  athena_wg         = local.foundation.athena_workgroup_name
+  maintenance_files = ["silver/*", "gold/*"]
+  maintenance_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "RunAthenaQueries"
+        Effect = "Allow"
+        Action = [
+          "athena:StartQueryExecution", "athena:StopQueryExecution", "athena:GetQueryExecution",
+          "athena:GetQueryResults", "athena:GetWorkGroup",
+        ]
+        Resource = "arn:aws:athena:${var.region}:${var.aws_account_id}:workgroup/${local.athena_wg}"
+      },
+      {
+        # Athena commits OPTIMIZE, VACUUM and property changes to the Glue table.
+        Sid    = "CommitIcebergTables"
+        Effect = "Allow"
+        Action = ["glue:GetDatabase", "glue:GetTable", "glue:GetTables", "glue:UpdateTable"]
+        Resource = [
+          "${local.glue_prefix}:catalog",
+          "${local.glue_prefix}:database/${local.silver_db}",
+          "${local.glue_prefix}:database/${local.gold_db}",
+          "${local.glue_prefix}:table/${local.silver_db}/*",
+          "${local.glue_prefix}:table/${local.gold_db}/*",
+        ]
+      },
+      {
+        Sid       = "ListTableFiles"
+        Effect    = "Allow"
+        Action    = "s3:ListBucket"
+        Resource  = local.lake_arn
+        Condition = { StringLike = { "s3:prefix" = local.maintenance_files } }
+      },
+      {
+        # VACUUM deletes expired and orphan files (Athena docs: without s3:DeleteObject it
+        # "succeeds" but deletes nothing). The lake bucket is versioned: deleted objects stay
+        # recoverable for 30 days.
+        Sid      = "RewriteAndExpireTableFiles"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
+        Resource = [for p in local.maintenance_files : "${local.lake_arn}/${p}"]
+      },
+      { Sid = "LocateBuckets", Effect = "Allow", Action = "s3:GetBucketLocation", Resource = [local.lake_arn, local.art_arn] },
+      {
+        Sid      = "AthenaResultsAndReports"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"]
+        Resource = ["${local.art_arn}/athena_results/${local.athena_wg}/*", "${local.art_arn}/iceberg_maintenance/*"]
+      },
+      {
+        Sid      = "CdcWriterLease"
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:GetItem"]
+        Resource = aws_dynamodb_table.cdc_checkpoints.arn
+        Condition = {
+          "ForAllValues:StringEquals" = { "dynamodb:LeadingKeys" = var.maintenance_leased_tables }
+        }
+      },
+      {
+        Sid      = "DenyBronze"
+        Effect   = "Deny"
+        Action   = "s3:*"
+        Resource = ["${local.raw_arn}", "${local.raw_arn}/*"]
+      },
+    ]
+  })
+}
+
+module "iceberg_maintenance" {
+  source = "../../../modules/glue_spark_job"
+
+  name                    = local.maintenance_job
+  description             = "Daily Iceberg maintenance through Athena: retention, OPTIMIZE, VACUUM (Silver under CDC lease, Gold marts)."
+  aws_account_id          = var.aws_account_id
+  script_path             = "${path.module}/../../../../jobs/glue/iceberg_maintenance.py"
+  wheel_path              = local.wheel_path
+  python_modules          = local.python_modules
+  artifacts_bucket_name   = local.buckets["artifacts"]
+  kms_key_arn             = local.foundation.data_kms_key_arn
+  data_access_policy_json = local.maintenance_policy
+  log_group_arns          = [for g in aws_cloudwatch_log_group.glue : g.arn]
+  timeout_minutes         = 60
+
+  job_arguments = {
+    "--workgroup"              = local.athena_wg
+    "--silver-database"        = local.silver_db
+    "--gold-database"          = local.gold_db
+    "--silver-tables"          = join(",", var.maintenance_silver_tables)
+    "--leased-tables"          = join(",", var.maintenance_leased_tables)
+    "--gold-tables"            = join(",", var.maintenance_gold_tables)
+    "--silver-max-age-seconds" = tostring(var.silver_snapshot_retention.max_age_seconds)
+    "--silver-min-snapshots"   = tostring(var.silver_snapshot_retention.min_snapshots)
+    "--gold-max-age-seconds"   = tostring(var.gold_snapshot_retention.max_age_seconds)
+    "--gold-min-snapshots"     = tostring(var.gold_snapshot_retention.min_snapshots)
+    "--checkpoint-table"       = aws_dynamodb_table.cdc_checkpoints.name
+    "--report-bucket"          = local.buckets["artifacts"]
+    "--report-prefix"          = "iceberg_maintenance"
+    "--region"                 = var.region
+  }
+}
+
+resource "aws_iam_role" "maintenance_scheduler" {
+  name = "${local.maintenance_job}-scheduler"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "scheduler.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "maintenance_scheduler" {
+  name = "start-maintenance"
+  role = aws_iam_role.maintenance_scheduler.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "glue:StartJobRun"
+      Resource = "${local.glue_prefix}:job/${local.maintenance_job}"
+    }]
+  })
+}
+
+# EventBridge Scheduler universal target for the Glue StartJobRun API.
+resource "aws_scheduler_schedule" "iceberg_maintenance" {
+  name                         = local.maintenance_job
+  description                  = "Daily Iceberg maintenance (ADR 0033)."
+  schedule_expression          = var.maintenance_schedule
+  schedule_expression_timezone = "America/Toronto"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = "arn:aws:scheduler:::aws-sdk:glue:startJobRun"
+    role_arn = aws_iam_role.maintenance_scheduler.arn
+    input    = jsonencode({ JobName = module.iceberg_maintenance.job_name })
+  }
+}
+
+# A failed, timed-out or errored maintenance run alerts the pipeline topic.
+resource "aws_cloudwatch_event_rule" "maintenance_failed" {
+  name        = "${local.maintenance_job}-failed"
+  description = "Iceberg maintenance run did not succeed."
+  event_pattern = jsonencode({
+    source        = ["aws.glue"]
+    "detail-type" = ["Glue Job State Change"]
+    detail = {
+      jobName = [module.iceberg_maintenance.job_name]
+      state   = ["FAILED", "TIMEOUT", "ERROR"]
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "maintenance_failed" {
+  rule = aws_cloudwatch_event_rule.maintenance_failed.name
+  arn  = aws_sns_topic.pipeline_alerts.arn
+
+  input_transformer {
+    input_paths = {
+      state = "$.detail.state"
+      run   = "$.detail.jobRunId"
+      time  = "$.time"
+      msg   = "$.detail.message"
+    }
+    input_template = "\"ProcureLake dev: Iceberg maintenance run <run> <state> at <time>: <msg>. Report: s3://${local.buckets["artifacts"]}/iceberg_maintenance/. Runbook: docs/runbooks/iceberg-maintenance.md\""
+  }
+}

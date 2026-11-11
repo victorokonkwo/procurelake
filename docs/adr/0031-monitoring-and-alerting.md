@@ -73,7 +73,7 @@ nothing to apply.
   - the freshness alarm cleared by itself 15 minutes after the late batch, with no newer
     batch, so its OK means only that time passed.
 - **Not built (owner scope):** published dbt docs and lineage, Glue table owners and
-  classifications, Iceberg `OPTIMIZE`/`VACUUM`, and a cost report. Lineage today is the dbt
+  classifications, Iceberg `OPTIMIZE`/`VACUUM` (since built: ADR 0033), and a cost report. Lineage today is the dbt
   manifest uploaded per run (`dbt/runs/<run id>/manifest.json`), and cost is the budget alerts
   plus the dashboard's Athena widget.
 - **Cost:** 8 standard alarms and 2 more while CDC is up, one dashboard, about 30 custom metric
