@@ -13,9 +13,10 @@ this runs in Spark (Glue 5.1, Iceberg 1.10):
 Layout is measured before and after from the ``files`` metadata table: data files and bytes per
 ``spec_id``, so it shows exactly which files are still in the old layout.
 
-Evolve tables that already have a partition spec (every tenant-owned Silver table is partitioned
-by ``tenant_id``). On a table that started unpartitioned, Iceberg 1.10's metadata tables failed
-after the evolution in CI (``Cannot find source column for partition field … identity(1000)``).
+Layout is read from the ``files`` metadata table only. Iceberg 1.10's ``partitions`` metadata
+table failed while a table held files of two specs at once (``Cannot find source column for
+partition field … identity(…)``, CI 2026-11-11), which is exactly the state between adding a field
+and rewriting.
 
 Only the transforms used here are accepted, and identifiers are checked, because the statements
 are built as SQL text.
@@ -70,11 +71,10 @@ def parse_fields(csv: str) -> list[PartitionField]:
 
 @dataclass(frozen=True)
 class Layout:
-    """Data files and bytes per partition spec id, the partitions, and the current spec's fields."""
+    """Data files and bytes per partition spec id, and the current spec's fields."""
 
     files_by_spec: dict[int, int]
     bytes_by_spec: dict[int, int]
-    partitions: int
     spec: list[str]
 
     @property
@@ -135,11 +135,9 @@ def layout(spark, fq_table: str) -> Layout:
         f"SELECT spec_id, count(*) AS files, coalesce(sum(file_size_in_bytes), 0) AS bytes "  # noqa: S608
         f"FROM {fq_table}.files WHERE content = 0 GROUP BY spec_id"
     ).collect()
-    partitions = spark.sql(f"SELECT count(*) FROM {fq_table}.partitions").collect()[0][0]  # noqa: S608
     return Layout(
         files_by_spec={int(r.spec_id): int(r.files) for r in rows},
         bytes_by_spec={int(r.spec_id): int(r.bytes) for r in rows},
-        partitions=int(partitions),
         spec=partition_expressions(spark, fq_table),
     )
 

@@ -5,9 +5,8 @@ Checks what ADR 0034 relies on: ADD PARTITION FIELD is metadata-only (existing f
 spec, rows are unchanged throughout, and a rerun is idempotent.
 
 The table starts partitioned by ``tenant_id``, like every tenant-owned Silver table
-(``configs/pipelines/silver``). Evolving a table that started *unpartitioned* made Iceberg 1.10's
-metadata tables fail in CI (``Cannot find source column for partition field … identity(1000)``),
-so that path is not what the benchmark or this test relies on.
+(``configs/pipelines/silver``). The middle step leaves files of both specs in the table, the state
+in which Iceberg's ``partitions`` metadata table fails; ``layout`` reads ``files`` only.
 """
 
 from __future__ import annotations
@@ -61,7 +60,6 @@ def test_add_field_is_metadata_only_then_rewrite_moves_every_file(spark, table):
 
     rewritten = evolve(spark, "lake", database, field, rewrite=True)
     assert not rewritten.added  # idempotent: already in the spec
-    assert set(rewritten.after.files_by_spec) == {1}
-    assert rewritten.after.partitions == 6  # one tenant x six months
+    assert rewritten.after.files_by_spec == {1: 6}  # one file per (tenant, month): 1 x 6
     assert rewritten.rewrite["rewritten_data_files_count"] == rewritten.before.data_files
     assert _rows(spark, fq) == sorted(rows)
