@@ -1,7 +1,7 @@
 # ADR 0035: CI deploys: plan on pull requests, approved apply on dev (GitHub Actions + OIDC)
 
-- **Status:** Accepted. Not yet run end to end: this ADR is updated with the first pull-request
-  plan and the first approved apply.
+- **Status:** Accepted. The pull-request plan has run (2026-11-11). The approved apply runs on
+  the first merge that changes infrastructure.
 - **Date:** 2026-11-11
 - **Implementation:**
   - Workflow: `.github/workflows/deploy-dev.yml`
@@ -87,9 +87,13 @@ The owner decided on 2026-11-11:
   the same plan locally (`make dev-*-plan`).
 - **The dbt image digest is manual.** It must be updated with `gh variable set` after each
   `make dbt-image`, otherwise CI keeps the previous image.
-- **Unknown until the first run:**
-  - whether a wheel built on the Linux runner has the same SHA-256 as a local build. If not,
-    every CI plan replaces the five Glue wheels;
-  - whether the plan role's plans show no changes on an up-to-date root.
-
-  Both are checked on the first pull request.
+- **First pull-request plan (PR #3, run 43086259837, 2026-11-11):** foundation, data_platform,
+  security and observability all showed **no changes** against the deployed dev. So:
+  - a wheel built on the Linux runner has the same SHA-256 as the local build, and the Glue
+    jobs do not churn;
+  - the plan role, as a Lake Formation read-only admin, sees every grant.
+- **Two attempts failed first, both fixed:**
+  - the OIDC subject format (Decision 8);
+  - `lakeformation:ListLakeFormationOptIns`, which the managed `ReadOnlyAccess` policy lacks,
+    is now granted to the plan role.
+- **Logs:** in those runs the account ID appeared as `***`, as intended.
