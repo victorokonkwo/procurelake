@@ -37,6 +37,7 @@ DMS was resumed from its own checkpoint (`resume-processing`). Scheduled runs al
 | 23:52:18 | Latency alarm ALARM → OK (DMS metrics flowing again) | alarm history |
 | 23:55:17 | `procurelake-dev-cdc-source-to-silver-latency` OK → ALARM: the backlog batch's oldest change reached Silver 921.7 s after its commit | alarm history; `SourceToSilverSeconds` max 921.746 |
 | 23:57:08 | **Restored:** every stall change correct in Silver (tombstones for deletes) and in Gold | `check_layers`: 0 mismatches |
+| 00:10:17 (11-11) | Freshness alarm ALARM → OK by itself; no CDC batch since 23:54 | alarm history; `SourceToSilverSeconds` datapoints |
 
 ## Impact
 - **Stale window:** the last stalled commit at 23:38:40 was correct in Gold at 23:57:08, so
@@ -83,15 +84,15 @@ Correctness was checked per key in Silver and Gold, and for duplicates in Silver
   - On stack creation, the same alarm went to ALARM and sent an email before the new task
     published any metric. The reason is that missing data breaches. It cleared by itself at
     23:37 but is noise.
-  - After the backlog, the freshness alarm stayed in ALARM, because no further CDC batch
-    arrived to bring it back.
+  - The freshness alarm's OK carries no information: it cleared by itself at 00:10:17Z,
+    15 minutes after it fired, with no newer batch (its last datapoint was at 23:54Z).
 
 ## Actions
 | Action | Owner | Status |
 |---|---|---|
 | Measure the latency alarm's missing-data behaviour, or alarm also on the EventBridge "task stopped" event (it was the fastest signal) | data platform | Open (open question 39) |
 | Avoid the creation-time alarm: suppress it until the task has published metrics, or accept and document it | data platform | Open (open question 39) |
-| Make the freshness alarm return to OK when no newer batch arrives (it reflects the last batch only) | data platform | Open (open question 39) |
+| Decide whether the freshness alarm's OK should require an on-time batch (today it clears by itself about 15 minutes after a late one) | data platform | Open (open question 39) |
 | Repeat the drill with a larger stall (minutes of backlog at higher volume) | data platform | Open |
 
 ## Evidence

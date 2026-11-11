@@ -70,7 +70,8 @@ nothing to apply.
 - **Three tuning findings stay open** (open question 39):
   - the latency alarm was slower than its configuration suggests;
   - it fires once when the stack is created;
-  - the freshness alarm keeps its last state until another batch arrives.
+  - the freshness alarm cleared by itself 15 minutes after the late batch, with no newer
+    batch, so its OK means only that time passed.
 - **Not built (owner scope):** published dbt docs and lineage, Glue table owners and
   classifications, Iceberg `OPTIMIZE`/`VACUUM`, and a cost report. Lineage today is the dbt
   manifest uploaded per run (`dbt/runs/<run id>/manifest.json`), and cost is the budget alerts
