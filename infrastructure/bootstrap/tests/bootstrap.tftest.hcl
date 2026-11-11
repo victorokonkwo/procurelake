@@ -55,8 +55,11 @@ run "github_plan_role_trusts_only_prs_and_dev_branch" {
   }
   assert {
     condition = anytrue([for s in jsondecode(aws_iam_role_policy.github_plan.policy).Statement :
-    s.Effect == "Deny" && contains(s.Action, "s3:GetObject") && s.NotResource == "${aws_s3_bucket.state.arn}/*"])
-    error_message = "Plan role must be denied reading any S3 object except Terraform state."
+      s.Effect == "Deny" && contains(s.Action, "s3:GetObject") && toset(s.NotResource) == toset([
+        "${aws_s3_bucket.state.arn}/*",
+        "arn:aws:s3:::procurelake-dev-artifacts-123456789012-ca-central-1/glue/*",
+    ])])
+    error_message = "Plan role must be denied reading any S3 object except Terraform state and the deployed Glue code."
   }
 }
 

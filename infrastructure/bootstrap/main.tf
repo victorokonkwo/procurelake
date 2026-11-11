@@ -209,11 +209,17 @@ resource "aws_iam_role_policy" "github_plan" {
     Version = "2012-10-17"
     Statement = concat(local.state_access_statements, [
       {
-        # ReadOnlyAccess includes s3:GetObject everywhere. CI must never read lake data.
-        Sid         = "DenyReadingPlatformData"
-        Effect      = "Deny"
-        Action      = ["s3:GetObject", "s3:GetObjectVersion"]
-        NotResource = "${aws_s3_bucket.state.arn}/*"
+        # ReadOnlyAccess includes s3:GetObject everywhere. CI must never read lake data. The only
+        # exceptions are state and the deployed Glue code (scripts and wheels under glue/ in the
+        # artifacts bucket), which terraform plan must read to refresh those aws_s3_object
+        # resources. That prefix holds code built from this public repository, never data.
+        Sid    = "DenyReadingPlatformData"
+        Effect = "Deny"
+        Action = ["s3:GetObject", "s3:GetObjectVersion"]
+        NotResource = [
+          "${aws_s3_bucket.state.arn}/*",
+          "arn:aws:s3:::procurelake-dev-artifacts-${var.aws_account_id}-${var.region}/glue/*",
+        ]
       },
     ])
   })

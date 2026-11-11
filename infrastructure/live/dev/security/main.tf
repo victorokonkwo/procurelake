@@ -48,7 +48,8 @@ data "terraform_remote_state" "foundation" {
 
 # ----------------------------------------------------------------------------- settings
 resource "aws_lakeformation_data_lake_settings" "this" {
-  admins = var.data_lake_admin_arns
+  admins           = var.data_lake_admin_arns
+  read_only_admins = var.data_lake_read_only_admin_arns
 
   # Unchanged account defaults (get-data-lake-settings, 2026-11-10): new databases and tables
   # stay IAM-governed, so dbt/Glue keep working on tables they create.

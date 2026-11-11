@@ -76,6 +76,30 @@ Region `ca-central-1`, deployed 2026-11-10 to the dev account (its ID is in the 
 tfvars). Both stacks' state is in `s3://procurelake-tfstate-<account>-ca-central-1/` under
 `bootstrap/`, `dev/foundation/` and `dev/data_platform/` (added 2026-11-10: the Silver Glue job).
 
+## CI deploys (GitHub Actions, ADR 0035)
+
+`.github/workflows/deploy-dev.yml` plans and applies `foundation`, `data_platform`, `security`
+and `observability`, in that order. Bootstrap and `dev/cdc` stay manual.
+
+- **Pull request into `dev`:** plan with `procurelake-github-plan` (read-only). The job summary
+  lists each changed resource's address and action, never attribute values: the repository and
+  its logs are public. The account ID and state key are secrets, so GitHub masks them.
+- **Push to `dev`:** the same plan. If anything changes, the `apply` job waits in the GitHub
+  environment `dev` for the owner's approval. It then re-plans with
+  `procurelake-github-deploy-dev` and applies each root only if its fingerprint (actions,
+  addresses and a hash of the planned values) equals the one approved. If an earlier root's
+  apply changes what a later root plans, the job stops before that root: re-run the workflow
+  and review the new plan.
+- **Inputs:**
+  - secrets `AWS_ACCOUNT_ID` and `TF_STATE_KMS_KEY_ARN`;
+  - variables `DBT_IMAGE_DIGEST` and `DATA_LAKE_OPERATOR`.
+
+  After `make dbt-image`, update the digest, otherwise CI keeps deploying the previous image:
+  `gh variable set DBT_IMAGE_DIGEST --body "$(cat build/dbt_runner.digest)"`. An empty digest
+  fails the job rather than planning the removal of the state machines.
+- **Local applies still work.** Keep the security `terraform.tfvars` admin lists equal to CI's:
+  the data lake settings resource replaces the whole list.
+
 ## Safety properties
 
 - `allowed_account_ids` on every provider stops Terraform from acting on any other account.
@@ -89,6 +113,7 @@ tfvars). Both stacks' state is in `s3://procurelake-tfstate-<account>-ca-central
 ## Known gaps
 
 - The GitHub `procurelake-github-deploy-dev` role uses `AdministratorAccess`, restricted to the
-  GitHub `dev` environment through its trust policy. It will be replaced with a scoped policy in the
+  GitHub `dev` environment (owner approval, `dev` branch only) through its trust policy. CI now
+  applies with it (ADR 0035). It will be replaced with a scoped policy in the
   Week 10 security review (`docs/open-questions.md`).
 - There's no Terraform linter or security scanner in the toolchain yet (`docs/open-questions.md` item 5).

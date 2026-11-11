@@ -1,0 +1,125 @@
+# Terraform plan on pull requests; plan, then apply after the owner's approval, on pushes to dev
+# (ADR 0035). AWS access is OIDC only: no long-lived keys.
+#
+# * plan: role procurelake-github-plan (read-only; cannot read lake data). Prints resource
+#   addresses and actions only, because the repository and these logs are public.
+# * apply: job in the GitHub environment "dev" (required reviewer; dev branch only), the only
+#   context role procurelake-github-deploy-dev trusts. It re-plans and applies only if each
+#   root's fingerprint equals the one shown in the plan job the reviewer approved.
+#
+# Roots: foundation, data_platform, security, observability. Bootstrap and the disposable
+# dev/cdc stack stay manual.
+name: deploy-dev
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - "infrastructure/**"
+      - "src/**"
+      - "jobs/**"
+      - "contracts/**"
+      - "configs/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "scripts/ci/**"
+      - ".github/workflows/deploy-dev.yml"
+  push:
+    branches: [dev]
+    paths:
+      - "infrastructure/**"
+      - "src/**"
+      - "jobs/**"
+      - "contracts/**"
+      - "configs/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "scripts/ci/**"
+      - ".github/workflows/deploy-dev.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy pipeline at a time, and never cancel one mid-apply.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ca-central-1
+  TF_IN_AUTOMATION: "1"
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  TF_STATE_KMS_KEY_ARN: ${{ secrets.TF_STATE_KMS_KEY_ARN }}
+  DBT_IMAGE_DIGEST: ${{ vars.DBT_IMAGE_DIGEST }}
+  DATA_LAKE_OPERATOR: ${{ vars.DATA_LAKE_OPERATOR }}
+
+jobs:
+  plan:
+    name: plan (4 roots)
+    # Pull requests from forks get no OIDC token or secrets; skip them rather than fail.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      changes: ${{ steps.plan.outputs.changes }}
+      foundation: ${{ steps.plan.outputs.foundation }}
+      data_platform: ${{ steps.plan.outputs.data_platform }}
+      security: ${{ steps.plan.outputs.security }}
+      observability: ${{ steps.plan.outputs.observability }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.17.1"
+          terraform_wrapper: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          python-version: "3.11"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/procurelake-github-plan
+          role-session-name: gha-plan-${{ github.run_id }}
+          aws-region: ca-central-1
+      - id: plan
+        run: scripts/ci/terraform_dev.sh plan
+
+  apply:
+    name: apply (after approval)
+    needs: plan
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev' && needs.plan.outputs.changes != '0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      EXPECTED_FOUNDATION: ${{ needs.plan.outputs.foundation }}
+      EXPECTED_DATA_PLATFORM: ${{ needs.plan.outputs.data_platform }}
+      EXPECTED_SECURITY: ${{ needs.plan.outputs.security }}
+      EXPECTED_OBSERVABILITY: ${{ needs.plan.outputs.observability }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.17.1"
+          terraform_wrapper: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          python-version: "3.11"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/procurelake-github-deploy-dev
+          role-session-name: gha-deploy-${{ github.run_id }}
+          aws-region: ca-central-1
+      - run: scripts/ci/terraform_dev.sh apply

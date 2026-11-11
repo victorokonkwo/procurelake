@@ -29,6 +29,12 @@ variable "data_lake_admin_arns" {
   }
 }
 
+variable "data_lake_read_only_admin_arns" {
+  description = "Lake Formation read-only administrators: the GitHub Actions plan role, so terraform plan sees every grant it refreshes (ADR 0035)."
+  type        = list(string)
+  default     = []
+}
+
 variable "tenants" {
   description = "Tenants with a scoped consumer role (synthetic tenants, AGENTS.md section 2.3)."
   type        = list(string)
