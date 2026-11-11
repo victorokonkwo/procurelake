@@ -84,3 +84,22 @@ resource "aws_glue_catalog_database" "gold_staging" {
   description  = "ProcureLake ${var.environment} dbt staging and intermediate views (not for consumers)."
   location_uri = "s3://${var.lake_bucket_name}/gold_staging/"
 }
+
+# Benchmarks (ADR 0034): a scaled synthetic dataset is loaded here, never into the dev Silver
+# and Gold the CDC pipeline and the tenants use. The locations sit under bench/, outside the
+# Lake Formation-registered gold/ location, so access is IAM-only and no tenant is granted them.
+resource "aws_glue_catalog_database" "bench_silver" {
+  count = var.bench_databases ? 1 : 0
+
+  name         = "${var.name_prefix}_bench_silver"
+  description  = "ProcureLake ${var.environment} benchmark Silver (scaled synthetic data; not tenant-facing)."
+  location_uri = "s3://${var.lake_bucket_name}/bench/silver/"
+}
+
+resource "aws_glue_catalog_database" "bench_gold" {
+  count = var.bench_databases ? 1 : 0
+
+  name         = "${var.name_prefix}_bench_gold"
+  description  = "ProcureLake ${var.environment} benchmark Gold (dbt over the bench Silver; not tenant-facing)."
+  location_uri = "s3://${var.lake_bucket_name}/bench/gold/"
+}

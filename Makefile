@@ -370,3 +370,58 @@ ai-publish: ## Re-write every decided review to Silver (idempotent MERGE)
 .PHONY: ai-evaluate
 ai-evaluate: ## Score the latest extractions against configs/ai/evaluation/ground_truth.yaml; evidence in build/evidence/
 	$(AI_CLI) $(AI_ROLE) evaluate $(AI_REVIEW)
+
+# ----------------------------------------------------------------------------- benchmarks (ADR 0034)
+# A scaled synthetic dataset in its own local database and its own namespace end to end
+# (Bronze postgres_bench, bench Silver/Gold databases): the dev data is never touched.
+BENCH_SCALE ?= 18
+BENCH_DSN = $$(uv run python -c "import os,urllib.parse as u;p=u.urlsplit(os.environ['PROCURELAKE_PG_DSN']);print(p._replace(path='/procurelake_bench').geturl())")
+BENCH_SILVER = $$($(TFOUT) -raw bench_silver_database_name)
+BENCH_GOLD = $$($(TFOUT) -raw bench_gold_database_name)
+
+.PHONY: bench-db
+bench-db: check-env ## Local database procurelake_bench: migrate and (re)seed at BENCH_SCALE (default 18, about 105,700 rows)
+	@$(COMPOSE) exec -T postgres psql -U "$(POSTGRES_USER)" -d "$(POSTGRES_DB)" -tAc \
+	  "SELECT 1 FROM pg_database WHERE datname = 'procurelake_bench'" | grep -q 1 || \
+	  $(COMPOSE) exec -T postgres createdb -U "$(POSTGRES_USER)" procurelake_bench
+	PROCURELAKE_PG_DSN=$(BENCH_DSN) uv run python scripts/local/db_migrate.py
+	PROCURELAKE_PG_DSN=$(BENCH_DSN) uv run python scripts/local/seed_db.py --reset --seed $(SEED) --scale $(BENCH_SCALE)
+
+.PHONY: bench-snapshot
+bench-snapshot: check-env ## Snapshot procurelake_bench into Bronze as postgres_bench (ingestion role); prints rows per table
+	PROCURELAKE_PG_DSN=$(BENCH_DSN) PROCURELAKE_GIT_SHA=$$(git rev-parse --short HEAD) \
+	uv run python -m procurelake.ingestion.cli postgres-snapshot --source-system postgres_bench \
+	  --raw-bucket $(call BUCKET,raw) --manifest-bucket $(call BUCKET,artifacts) \
+	  --role-arn $$($(TFOUT) -raw ingestion_role_arn)
+
+.PHONY: bench-silver-run
+bench-silver-run: ## Run the bench Silver Glue job (latest complete postgres_bench batch) and wait
+	uv run python scripts/aws/run_glue_job.py $$($(DPOUT) -raw bench_silver_job_name)
+
+.PHONY: bench-dbt-build
+bench-dbt-build: ## dbt build of Gold core + marts into the bench Gold database (data-engineer role; AI models excluded)
+	PROCURELAKE_DBT_S3_STAGING_DIR=s3://$(call BUCKET,artifacts)/athena_results/ \
+	PROCURELAKE_DBT_S3_DATA_DIR=s3://$(call BUCKET,lake)/bench/gold/ \
+	PROCURELAKE_GOLD_SCHEMA=$(BENCH_GOLD) \
+	PROCURELAKE_SILVER_SCHEMA=$(BENCH_SILVER) \
+	PROCURELAKE_ATHENA_WORKGROUP=$$($(TFOUT) -raw athena_workgroup_name) \
+	uv run --group dbt python scripts/aws/with_role.py $$($(TFOUT) -raw data_engineer_role_arn) -- \
+	  uv run --group dbt dbt build $(DBT_DIRS) \
+	  --exclude path:models/marts/ai_intelligence path:models/staging/contract_intelligence $(DBT_ARGS)
+
+.PHONY: bench-queries
+bench-queries: ## Run the analytical query benchmark on the bench databases (LABEL=..., REPEATS=5); evidence in build/evidence/
+	@test -n "$(LABEL)" || { echo "Usage: make bench-queries LABEL=unpartitioned"; exit 1; }
+	uv run python scripts/aws/with_role.py $$($(TFOUT) -raw data_engineer_role_arn) -- \
+	  uv run python scripts/aws/bench_queries.py run --label $(LABEL) --repeats $(or $(REPEATS),5) \
+	  --silver $(BENCH_SILVER) --gold $(BENCH_GOLD) --workgroup $$($(TFOUT) -raw athena_workgroup_name)
+
+.PHONY: bench-compare
+bench-compare: ## Compare two query benchmark runs (BEFORE=label AFTER=label); fails if any answer differs
+	uv run python scripts/aws/bench_queries.py compare \
+	  build/evidence/bench_queries_$(BEFORE).json build/evidence/bench_queries_$(AFTER).json
+
+.PHONY: bench-partition-evolve
+bench-partition-evolve: ## Add the bench partition fields (REWRITE=true also rewrites every file) and wait; report in artifacts/benchmarks/
+	uv run python scripts/aws/run_glue_job.py $$($(DPOUT) -raw partition_evolution_job_name) \
+	  --arg=--rewrite=$(or $(REWRITE),false)

@@ -38,6 +38,7 @@ module "catalog" {
   raw_bucket_name       = module.lakehouse.bucket_names["raw"]
   lake_bucket_name      = module.lakehouse.bucket_names["lake"]
   artifacts_bucket_name = module.lakehouse.bucket_names["artifacts"]
+  bench_databases       = true # Week 10 benchmarks (ADR 0034); empty databases cost nothing
 }
 
 module "athena" {
@@ -71,8 +72,14 @@ module "iam" {
     module.catalog.silver_database_name,
     module.catalog.gold_database_name,
     module.catalog.gold_staging_database_name,
+    module.catalog.bench_silver_database_name,
+    module.catalog.bench_gold_database_name,
   ]
-  glue_writable_database_names = [module.catalog.gold_database_name, module.catalog.gold_staging_database_name]
+  glue_writable_database_names = [
+    module.catalog.gold_database_name,
+    module.catalog.gold_staging_database_name,
+    module.catalog.bench_gold_database_name, # dbt builds the benchmark Gold (ADR 0034)
+  ]
   # The dbt runner (ECS Fargate, ADR 0029) runs as the data engineer, like `make dbt-build`.
   data_engineer_service_principals = ["ecs-tasks.amazonaws.com"]
 }

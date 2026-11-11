@@ -112,3 +112,9 @@ variable "maintenance_schedule" {
   type        = string
   default     = "cron(30 3 * * ? *)"
 }
+
+variable "bench_partition_fields" {
+  description = "Partition fields the partition-evolution job adds to the bench Silver tables (table=transform(column), comma-separated; ADR 0034)."
+  type        = string
+  default     = "silver_invoices=months(invoice_date),silver_awards=months(awarded_at)"
+}

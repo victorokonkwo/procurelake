@@ -42,12 +42,6 @@ from procurelake.lakehouse.silver.writer import LAST_BATCH_PROPERTY, _check_iden
 
 CDC_OWNED_PROPERTY = "procurelake.cdc_owned"
 COMMIT_COLUMN = "_dms_commit_ts"
-CDC_COLUMNS = [
-    ("_source_commit_ts", "timestamp"),
-    ("_source_sequence", "string"),
-    ("_cdc_op", "string"),
-    ("_is_deleted", "boolean"),
-]
 _LOAD_ID = re.compile(r"/load_id=([0-9TZ]+)/")
 
 
@@ -136,12 +130,8 @@ def _event_reasons(events: DataFrame, spec: SilverTableSpec) -> DataFrame:
 
 
 def ensure_cdc_table(spark: SparkSession, spec: SilverTableSpec, fq_table: str, location: str | None) -> None:
-    """Create the Silver table if needed, add the CDC columns, and mark it CDC-owned."""
+    """Create the Silver table if needed (it carries ``writer.CDC_COLUMNS``); mark it CDC-owned."""
     ensure_table(spark, spec, fq_table, location)
-    existing = {f.name for f in spark.table(fq_table).schema.fields}
-    to_add = [f"`{n}` {t}" for n, t in CDC_COLUMNS if n not in existing]
-    if to_add:
-        spark.sql(f"ALTER TABLE {fq_table} ADD COLUMNS ({', '.join(to_add)})")
     spark.sql(f"ALTER TABLE {fq_table} SET TBLPROPERTIES ('{CDC_OWNED_PROPERTY}' = 'true')")
 
 

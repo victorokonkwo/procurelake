@@ -76,3 +76,24 @@ run "rejects_unsafe_database_prefix" {
   }
   expect_failures = [var.name_prefix]
 }
+
+run "bench_databases_are_off_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(aws_glue_catalog_database.bench_silver) == 0 && length(aws_glue_catalog_database.bench_gold) == 0
+    error_message = "Benchmark databases must exist only where asked for."
+  }
+}
+
+run "bench_databases_sit_outside_the_governed_prefixes" {
+  command = plan
+
+  variables {
+    bench_databases = true
+  }
+  assert {
+    condition     = aws_glue_catalog_database.bench_silver[0].location_uri == "s3://procurelake-dev-lake-123456789012-ca-central-1/bench/silver/" && aws_glue_catalog_database.bench_gold[0].location_uri == "s3://procurelake-dev-lake-123456789012-ca-central-1/bench/gold/"
+    error_message = "Benchmark data must live under bench/, outside the Lake Formation-registered gold/ and the dev silver/."
+  }
+}

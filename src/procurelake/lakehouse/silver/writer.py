@@ -40,6 +40,17 @@ PROVENANCE_DDL = (
     "`_silver_updated_at` timestamp"
 )
 
+# Change-lineage columns (ADR 0028). Every Silver table has them, whichever path built it, because
+# dbt staging reads them (`_is_deleted`, `_source_sequence`). The CDC apply fills them; a snapshot
+# apply leaves them null, which staging reads as "not deleted" (ADR 0034: a Silver built only from
+# snapshots, like the benchmark one, previously had no such columns and dbt failed on it).
+CDC_COLUMNS = [
+    ("_source_commit_ts", "timestamp"),
+    ("_source_sequence", "string"),
+    ("_cdc_op", "string"),
+    ("_is_deleted", "boolean"),
+]
+
 
 class StaleBatchError(RuntimeError):
     """Raised when a batch older than the table's last applied batch is applied."""
@@ -78,6 +89,12 @@ def ensure_table(spark: SparkSession, spec: SilverTableSpec, fq_table: str, loca
         )
         """
     )
+    # Tables created before the lineage columns were part of every Silver table get them here:
+    # Iceberg ADD COLUMNS is metadata-only, and existing rows read the new columns as null.
+    existing = {f.name for f in spark.table(fq_table).schema.fields}
+    to_add = [f"`{n}` {t}" for n, t in CDC_COLUMNS if n not in existing]
+    if to_add:
+        spark.sql(f"ALTER TABLE {fq_table} ADD COLUMNS ({', '.join(to_add)})")
 
 
 def last_applied_batch(spark: SparkSession, fq_table: str) -> str | None:

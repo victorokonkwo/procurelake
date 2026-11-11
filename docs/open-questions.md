@@ -17,7 +17,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 10. **Exchange-rate source and conversion policy** for any cross-currency reporting.
 11. **Supplier canonicalization rules** for `dim_supplier` (one canonical supplier), especially across tenants and public reference data.
 12. **How public reference data relates to tenant data.** Is it joined into tenant products, kept separate, or exposed only to the admin product?
-13. **Partitioning strategy** for each Silver and Gold Iceberg table.
+13. **Partitioning strategy** for each Silver and Gold Iceberg table. *Partly settled:* Silver is partitioned by `tenant_id` (identity) in `configs/pipelines/silver/`. Open: time partitioning, and Gold. Evidence at 100k (2026-11-11, ADR 0034, `docs/benchmarks/2026-11-11-bench-100k.md`): `months()` on invoices and awards, after a rewrite, cut date-filtered scans by 91–97%, but saved no time (0.5–0.7 s engine time in every layout) and nothing billable (under Athena's 10 MB minimum). It split each table into 60+ files of 30–120 KB, with 10–36% more storage. Decide after the 1M run.
 
 ## Platform
 14. ~~Freshness objective for the C5 gate~~ **Resolved (owner, 2026-11-10): 95% of source changes visible in Silver and Gold within 15 minutes** (ADR 0027).

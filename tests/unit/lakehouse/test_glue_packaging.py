@@ -104,6 +104,7 @@ def test_parse_args_ignores_glue_arguments():
         ]
     )
     assert (args.job_run_id, args.catalog, args.batch_id) == ("jr_abc", "glue_catalog", "")
+    assert args.source_system == "postgres"  # the dev job; only the bench job passes postgres_bench
 
 
 def test_pyproject_force_includes_bundled_dirs():
@@ -121,10 +122,13 @@ def test_run_batch_rejects_bad_names(bad):
 
     with pytest.raises(ValueError):
         run_batch(None, {}, None, catalog=bad, database="db", quarantine_root="q")
+    with pytest.raises(ValueError):
+        run_batch(None, {}, None, catalog="c", database="db", quarantine_root="q", source_system=bad)
 
 
-def test_glue_entrypoint_never_calls_sys_exit():
+@pytest.mark.parametrize("entrypoint", sorted(p.name for p in (REPO / "jobs" / "glue").glob("*.py")))
+def test_glue_entrypoint_never_calls_sys_exit(entrypoint):
     # Glue reports any SystemExit, even SystemExit(0), as a FAILED run (first dev run, 2026-11-10).
-    tree = ast.parse((REPO / "jobs" / "glue" / "bronze_to_silver.py").read_text())
+    tree = ast.parse((REPO / "jobs" / "glue" / entrypoint).read_text())
     calls = [n for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr == "exit"]
     assert calls == []

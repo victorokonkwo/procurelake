@@ -75,16 +75,17 @@ def run_batch(
     batch_id: str | None = None,
     run_id: str | None = None,
     wheel_sha256: str | None = None,
+    source_system: str = SOURCE_SYSTEM,
 ) -> tuple[str, list[SilverTableRun], str]:
     """Apply one snapshot batch to every Silver table. Returns (batch_id, runs, summary_key)."""
-    for name in (catalog, database):
+    for name in (catalog, database, source_system):
         if not _NAME.match(name):
-            raise ValueError(f"invalid catalog/database name {name!r}")
+            raise ValueError(f"invalid catalog/database/source name {name!r}")
     started = datetime.now(UTC)
     manifests: list[IngestionManifest] = []
     for table in specs:
-        manifests.extend(load_manifests(artifacts, SOURCE_SYSTEM, table))
-    chosen = batch_id or select_snapshot_batch(manifests, specs)
+        manifests.extend(load_manifests(artifacts, source_system, table))
+    chosen = batch_id or select_snapshot_batch(manifests, specs, source_system)
     by_table = {
         m.dataset: m
         for m in manifests
@@ -114,6 +115,7 @@ def run_batch(
     summary = {
         "summary_format_version": "1",
         "batch_id": chosen,
+        "source_system": source_system,
         "run_id": run_id,
         "catalog": catalog,
         "database": database,
@@ -124,7 +126,7 @@ def run_batch(
         "status": "blocked" if any(r.status == "blocked" for r in runs) else "succeeded",
         "tables": [asdict(r) for r in runs],
     }
-    key = f"{RUNS_ROOT}/{SOURCE_SYSTEM}/batch_id={chosen}/run_id={run_id}/summary.json"
+    key = f"{RUNS_ROOT}/{source_system}/batch_id={chosen}/run_id={run_id}/summary.json"
     artifacts.put_new(key, json.dumps(summary, indent=2, sort_keys=True).encode() + b"\n", "application/json")
     return chosen, runs, key
 
@@ -138,6 +140,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--quarantine-root", required=True, help="s3://bucket/quarantine")
     parser.add_argument("--batch-id", default="", help="Snapshot batch to apply (default: latest complete)")
     parser.add_argument("--region", default="ca-central-1")
+    parser.add_argument(
+        "--source-system",
+        default=SOURCE_SYSTEM,
+        help="Bronze/manifest namespace (postgres_bench: benchmarks)",
+    )
     parser.add_argument("--wheel-sha256", default="", help="SHA-256 of the deployed wheel (provenance)")
     # Glue adds its own arguments (--JOB_NAME, --JOB_RUN_ID, ...); keep the run id, ignore the rest.
     parser.add_argument("--JOB_RUN_ID", dest="job_run_id", default="")
@@ -171,6 +178,7 @@ def main(argv: list[str]) -> None:
         batch_id=args.batch_id or None,
         run_id=args.job_run_id or None,
         wheel_sha256=args.wheel_sha256 or None,
+        source_system=args.source_system,
     )
     logger.info("batch %s: summary s3://%s/%s", batch, args.artifacts_bucket, key)
     blocked = [r.table for r in runs if r.status == "blocked"]

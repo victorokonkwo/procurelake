@@ -56,6 +56,7 @@ def _run_postgres_snapshot(
         manifest_store,
         load_contracts(Path(args.contracts_dir)),
         rows_per_file=args.rows_per_file,
+        source_system=args.source_system,
     )
     manifests = connector.snapshot()
     for m in manifests:
@@ -92,6 +93,11 @@ def main(argv: list[str] | None = None) -> int:
     pg = sub.add_parser("postgres-snapshot", help="consistent full snapshot of the operational tables")
     pg.add_argument("--contracts-dir", default=str(DEFAULT_CONTRACTS_DIR))
     pg.add_argument("--rows-per-file", type=int, default=50_000)
+    pg.add_argument(
+        "--source-system",
+        default="postgres",
+        help="Bronze/manifest namespace (postgres_bench for the Week 10 benchmarks)",
+    )
     for p in (pg,):
         p.add_argument("--raw-bucket")
         p.add_argument("--manifest-bucket")

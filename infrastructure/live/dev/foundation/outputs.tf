@@ -37,3 +37,13 @@ output "gold_database_name" {
   description = "Glue database for Gold models (dbt target schema)."
   value       = module.catalog.gold_database_name
 }
+
+output "bench_silver_database_name" {
+  description = "Benchmark Silver database (Week 10, ADR 0034)."
+  value       = module.catalog.bench_silver_database_name
+}
+
+output "bench_gold_database_name" {
+  description = "Benchmark Gold database: dbt target for the benchmarks (ADR 0034)."
+  value       = module.catalog.bench_gold_database_name
+}

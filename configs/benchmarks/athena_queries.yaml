@@ -1,0 +1,77 @@
+# Week 10 analytical query benchmark (ADR 0034). `{silver}` and `{gold}` are replaced with the
+# databases under test (the bench databases for the 100k run). Each query runs `repeats` times;
+# Athena result reuse is off by default and every run's ResultReuseInformation is recorded.
+#
+# `prune_on` names the filter a partitioned layout could prune on; queries without it are the
+# control group (full scans whatever the layout).
+version: 1
+queries:
+  - name: supplier_awarded_value_top20
+    layer: gold
+    purpose: Supplier aggregation on the awarded-value mart (award totals, not spend).
+    sql: |
+      select tenant_id, supplier_id, currency_code, sum(awarded_value) as awarded_value
+      from {gold}.mart_awarded_value
+      group by 1, 2, 3
+      order by awarded_value desc, supplier_id
+      limit 20
+
+  - name: agency_monthly_actual_spend
+    layer: gold
+    purpose: Agency x month aggregation on the actual-spend mart (paid invoice amounts).
+    sql: |
+      select tenant_id, agency_id, paid_month, currency_code, sum(actual_spend) as actual_spend
+      from {gold}.mart_actual_spend
+      group by 1, 2, 3, 4
+      order by 1, 2, 3, 4
+
+  - name: monthly_awarded_value_from_fact
+    layer: gold
+    purpose: Monthly aggregation over the award fact (every award row).
+    sql: |
+      select award_month, currency_code, count(*) as awards, sum(award_amount) as awarded_value
+      from {gold}.fct_contract_award
+      group by 1, 2
+      order by 1, 2
+
+  - name: invoices_one_quarter_gold
+    layer: gold
+    purpose: One quarter of invoices from the Gold invoice fact (unpartitioned in every layout).
+    sql: |
+      select currency_code, count(*) as invoices, sum(invoice_amount) as invoiced
+      from {gold}.fct_invoice
+      where invoice_date between date '2025-04-01' and date '2025-06-30'
+      group by 1
+      order by 1
+
+  - name: invoices_one_quarter_silver
+    layer: silver
+    prune_on: invoice_date
+    purpose: One quarter of invoices from Silver; the pruning target for months(invoice_date).
+    sql: |
+      select currency_code, count(*) as invoices, sum(invoice_amount) as invoiced
+      from {silver}.silver_invoices
+      where invoice_date between date '2025-04-01' and date '2025-06-30'
+      group by 1
+      order by 1
+
+  - name: awards_one_month_silver
+    layer: silver
+    prune_on: awarded_at
+    purpose: One month of awards from Silver; the pruning target for months(awarded_at).
+    sql: |
+      select currency_code, count(*) as awards, sum(award_amount) as awarded_value
+      from {silver}.silver_awards
+      where awarded_at >= from_iso8601_timestamp('2025-03-01T00:00:00Z')
+        and awarded_at < from_iso8601_timestamp('2025-04-01T00:00:00Z')
+      group by 1
+      order by 1
+
+  - name: invoices_all_silver
+    layer: silver
+    purpose: Control, a full scan of Silver invoices (no filter to prune on).
+    sql: |
+      select currency_code, payment_status, count(*) as invoices, sum(paid_amount) as paid
+      from {silver}.silver_invoices
+      group by 1, 2
+      order by 1, 2

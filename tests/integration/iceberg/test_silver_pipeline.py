@@ -229,3 +229,34 @@ def test_run_batch_refuses_an_incomplete_batch(spark, env):
             env["quarantine"],
             batch_id=manifests["awards"].batch_id,
         )
+
+
+def test_bench_namespace_is_invisible_to_the_dev_silver_job(spark, env, dataset):
+    # ADR 0034: a postgres_bench snapshot lands under its own Bronze/manifest prefixes, so the
+    # dev job (source_system="postgres") never picks it up; only the bench job applies it.
+    raw = env["artifacts"].root.parent / "raw"
+    bench = PostgresSnapshotConnector(
+        env["dsn"], LocalLandingStore(raw), env["artifacts"], CONTRACTS, source_system="postgres_bench"
+    ).snapshot()
+    assert all(m.status == "succeeded" and m.source_system == "postgres_bench" for m in bench)
+    assert all(f.key.startswith("bronze/postgres_bench/") for m in bench for f in m.files)
+
+    catalog, database = env["ns"].split(".", 1)
+    with pytest.raises(LookupError):
+        run_batch(spark, SPECS, env["artifacts"], catalog, database, env["quarantine"])
+    batch, runs, summary_key = run_batch(
+        spark, SPECS, env["artifacts"], catalog, database, env["quarantine"], source_system="postgres_bench"
+    )
+    assert batch == bench[0].batch_id and all(r.status == "applied" for r in runs)
+    assert summary_key.startswith("pipeline_runs/silver/postgres_bench/")
+    assert spark.table(f"{env['ns']}.silver_invoices").count() == dataset.counts()["invoices"]
+
+
+def test_snapshot_built_tables_carry_the_cdc_lineage_columns_as_null(spark, env):
+    # dbt staging reads _is_deleted / _source_sequence from every Silver table (ADR 0034).
+    manifests = env["snapshot"]()
+    _run(spark, env, manifests, "agencies")
+    fq = f"{env['ns']}.silver_agencies"
+    fields = {f.name for f in spark.table(fq).schema.fields}
+    assert {"_source_commit_ts", "_source_sequence", "_cdc_op", "_is_deleted"} <= fields
+    assert spark.sql(f"SELECT count(*) FROM {fq} WHERE _is_deleted IS NOT NULL").collect()[0][0] == 0

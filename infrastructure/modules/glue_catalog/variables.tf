@@ -44,3 +44,9 @@ variable "data_owner" {
   type        = string
   default     = "data-platform"
 }
+
+variable "bench_databases" {
+  description = "Create the benchmark Silver and Gold databases (Week 10, ADR 0034) under s3://<lake>/bench/. Kept apart from the governed databases: not registered with Lake Formation, never granted to tenants."
+  type        = bool
+  default     = false
+}

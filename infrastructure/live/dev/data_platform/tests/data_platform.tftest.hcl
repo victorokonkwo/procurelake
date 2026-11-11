@@ -44,11 +44,13 @@ override_data {
         products  = "procurelake-dev-products-123456789012-ca-central-1"
         artifacts = "procurelake-dev-artifacts-123456789012-ca-central-1"
       }
-      data_kms_key_arn       = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
-      silver_database_name   = "procurelake_dev_silver"
-      gold_database_name     = "procurelake_dev_gold"
-      athena_workgroup_name  = "procurelake-dev-engineering"
-      data_engineer_role_arn = "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"
+      data_kms_key_arn           = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+      silver_database_name       = "procurelake_dev_silver"
+      gold_database_name         = "procurelake_dev_gold"
+      bench_silver_database_name = "procurelake_dev_bench_silver"
+      bench_gold_database_name   = "procurelake_dev_bench_gold"
+      athena_workgroup_name      = "procurelake-dev-engineering"
+      data_engineer_role_arn     = "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"
     }
   }
 }
@@ -259,4 +261,48 @@ run "silver_retention_cannot_be_under_a_day" {
     silver_snapshot_retention = { max_age_seconds = 3600, min_snapshots = 10 }
   }
   expect_failures = [var.silver_snapshot_retention]
+}
+
+run "bench_jobs_touch_only_the_bench_namespace" {
+  command = apply
+
+  assert {
+    condition     = module.bench_bronze_to_silver.job_name == "procurelake-dev-bench-bronze-to-silver" && module.partition_evolution.job_name == "procurelake-dev-partition-evolution"
+    error_message = "Unexpected benchmark job names."
+  }
+  # Every allowed resource is in the bench namespace: lake bench/, raw postgres_bench or
+  # quarantine/bench, bench manifests/run summaries/reports, the bench Silver database, the
+  # catalog itself, or the KMS key.
+  assert {
+    condition = alltrue(flatten([
+      for doc in [local.bench_silver_policy, local.partition_evolution_policy] : [
+        for s in jsondecode(doc).Statement : [
+          for r in flatten([s.Resource]) : s.Effect == "Deny" || startswith(r, "arn:aws:kms:") || endswith(r, ":catalog") || contains([
+            "arn:aws:s3:::procurelake-dev-raw-123456789012-ca-central-1",
+            "arn:aws:s3:::procurelake-dev-lake-123456789012-ca-central-1",
+            "arn:aws:s3:::procurelake-dev-artifacts-123456789012-ca-central-1",
+          ], r) || strcontains(r, "bench")
+        ]
+      ]
+    ]))
+    error_message = "Benchmark roles may only be allowed on bench resources."
+  }
+  assert {
+    condition = anytrue([
+      for s in jsondecode(local.bench_silver_policy).Statement :
+      s.Effect == "Deny" && contains(s.Action, "s3:DeleteObject") && contains(s.Resource, "arn:aws:s3:::procurelake-dev-raw-123456789012-ca-central-1/bronze/*")
+    ])
+    error_message = "The bench Silver job must be denied deleting Bronze."
+  }
+  assert {
+    condition = anytrue([
+      for s in jsondecode(local.partition_evolution_policy).Statement :
+      s.Effect == "Deny" && s.Action == "s3:*" && contains(s.Resource, "arn:aws:s3:::procurelake-dev-raw-123456789012-ca-central-1/*")
+    ])
+    error_message = "The partition-evolution job must have no access to the raw bucket."
+  }
+  assert {
+    condition     = module.bench_bronze_to_silver.job_arguments_for_test["--source-system"] == "postgres_bench"
+    error_message = "The bench Silver job must read only postgres_bench batches."
+  }
 }

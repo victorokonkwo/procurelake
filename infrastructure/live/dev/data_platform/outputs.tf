@@ -57,3 +57,13 @@ output "iceberg_maintenance_job_name" {
   description = "Daily Iceberg maintenance Glue job (make iceberg-maintenance-run)."
   value       = module.iceberg_maintenance.job_name
 }
+
+output "bench_silver_job_name" {
+  description = "On-demand Glue job applying postgres_bench snapshots to the bench Silver (ADR 0034)."
+  value       = module.bench_bronze_to_silver.job_name
+}
+
+output "partition_evolution_job_name" {
+  description = "On-demand Glue job evolving bench Silver partition specs (ADR 0034)."
+  value       = module.partition_evolution.job_name
+}

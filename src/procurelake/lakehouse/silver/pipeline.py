@@ -46,12 +46,14 @@ class SilverTableRun:
     apply: ApplyResult | None
 
 
-def select_snapshot_batch(manifests: Iterable[IngestionManifest], tables: Iterable[str]) -> str:
-    """Latest batch ID with a succeeded snapshot manifest for every one of ``tables``."""
+def select_snapshot_batch(
+    manifests: Iterable[IngestionManifest], tables: Iterable[str], source_system: str = "postgres"
+) -> str:
+    """Latest batch ID of ``source_system`` with a succeeded snapshot manifest for every one of ``tables``."""
     required = set(tables)
     by_batch: dict[str, set[str]] = {}
     for m in manifests:
-        if m.status == "succeeded" and m.source_system == "postgres" and m.window is None:
+        if m.status == "succeeded" and m.source_system == source_system and m.window is None:
             by_batch.setdefault(m.batch_id, set()).add(m.dataset)
     complete = sorted(b for b, done in by_batch.items() if required <= done)
     if not complete:

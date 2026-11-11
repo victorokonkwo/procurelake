@@ -21,6 +21,7 @@ the same batch ID.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -37,6 +38,9 @@ from procurelake.ingestion.manifest import IngestionManifest, LandedFile, Reconc
 logger = logging.getLogger(__name__)
 
 SOURCE_SYSTEM = "postgres"
+# Another source name keeps a separate Bronze/manifest namespace, e.g. "postgres_bench" for the
+# Week 10 benchmarks, so its batches are never picked up by the dev Silver job.
+SOURCE_SYSTEM_PATTERN = re.compile(r"^postgres(_[a-z0-9]+)?$")
 DEFAULT_ROWS_PER_FILE = 50_000
 # Parents before children, matching the foreign keys (also the load order of the generator).
 TABLE_ORDER = (
@@ -75,6 +79,7 @@ class PostgresSnapshotConnector:
         contracts: Iterable[SourceContract],
         rows_per_file: int = DEFAULT_ROWS_PER_FILE,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        source_system: str = SOURCE_SYSTEM,
     ):
         if rows_per_file < 1:
             raise ValueError("rows_per_file must be >= 1")
@@ -84,6 +89,9 @@ class PostgresSnapshotConnector:
         self.contracts = order_contracts(contracts)
         self.rows_per_file = rows_per_file
         self.clock = clock
+        if not SOURCE_SYSTEM_PATTERN.fullmatch(source_system):
+            raise ValueError(f"source_system must look like postgres or postgres_<name>: {source_system!r}")
+        self.source_system = source_system
 
     def snapshot(self) -> list[IngestionManifest]:
         started = self.clock().replace(microsecond=0)
@@ -118,9 +126,8 @@ class PostgresSnapshotConnector:
         query = sql.SQL("SELECT {pk}::text, row_to_json(t)::text FROM {tbl} AS t ORDER BY {pk}").format(
             pk=sql.Identifier(pk[0]), tbl=qualified
         )
-        prefix = (
-            f"bronze/{SOURCE_SYSTEM}/{table}/ingestion_date={started.date().isoformat()}/batch_id={batch_id}"
-        )
+        day = started.date().isoformat()
+        prefix = f"bronze/{self.source_system}/{table}/ingestion_date={day}/batch_id={batch_id}"
 
         files: list[LandedFile] = []
         landed = 0
@@ -170,7 +177,7 @@ class PostgresSnapshotConnector:
             detail = "landed rows match count(*) in the same snapshot; primary keys unique"
 
         manifest = IngestionManifest(
-            source_system=SOURCE_SYSTEM,
+            source_system=self.source_system,
             dataset=table,
             schema_version=f"postgres.{schema}.{table}.v{contract.contract_version}",
             batch_id=batch_id,

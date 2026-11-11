@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 TERMINAL_STATES = {"SUCCEEDED", "FAILED", "CANCELLED"}
 
@@ -23,6 +23,8 @@ class QueryResult:
     data_scanned_bytes: int
     engine_execution_ms: int
     output_location: str
+    # Athena's full ``Statistics`` block (planning/queue/total times, result reuse) for benchmarks.
+    statistics: dict = field(default_factory=dict)
 
 
 def run_query(
@@ -79,4 +81,5 @@ def run_query(
         data_scanned_bytes=int(stats.get("DataScannedInBytes", 0)),
         engine_execution_ms=int(stats.get("EngineExecutionTimeInMillis", 0)),
         output_location=execution["ResultConfiguration"]["OutputLocation"],
+        statistics=dict(stats),
     )
