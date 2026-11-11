@@ -1,4 +1,6 @@
-"""Local Spark session with Apache Iceberg, matching AWS Glue 5.1 (Spark 3.5.6, Iceberg 1.10.0).
+"""Local Spark session with Apache Iceberg, matching AWS Glue 5.1 (Spark 3.5, Iceberg 1.10.0).
+
+Spark is 3.5.8 locally and 3.5.6 on Glue 5.1: the same 3.5 line (ADR 0024 amendment).
 
 Uses a Hadoop catalog in a temporary warehouse directory, so no AWS access is needed. Requires
 Java 17: JAVA_HOME, or the Homebrew openjdk@17 location on macOS.

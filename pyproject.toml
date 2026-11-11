@@ -31,7 +31,7 @@ dev = [
     "moto>=5.2.5",
     "pre-commit>=4.7.0",
     "pyarrow==26.0.1",
-    "pyspark==3.5.6",
+    "pyspark==3.5.8",
     "pytest>=9.2.0",
     "pytest-httpserver>=1.2.0",
     "ruff>=0.17.4",
@@ -47,6 +47,11 @@ ai = [
     "anthropic[bedrock]==2.3.0",
     "pypdf==6.21.4",
 ]
+
+# `uv sync` installs dev and ai by default, so unit tests (including tests/unit/ai) run after a
+# plain sync, locally and in CI. dbt stays opt-in (`uv sync --group dbt`).
+[tool.uv]
+default-groups = ["dev", "ai"]
 
 [tool.ruff]
 line-length = 110
@@ -69,5 +74,5 @@ addopts = "-ra --strict-markers"
 markers = [
     "postgres: requires the local PostgreSQL service (make db-up) and PROCURELAKE_PG_DSN",
     "aws: integration tests against the deployed dev AWS environment (opt-in: make test-aws)",
-    "spark: local Spark 3.5.6 + Iceberg 1.10.0 tests (need Java 17; first run downloads the Iceberg runtime)",
+    "spark: local Spark 3.5.8 + Iceberg 1.10.0 tests (need Java 17; first run downloads the Iceberg runtime)",
 ]

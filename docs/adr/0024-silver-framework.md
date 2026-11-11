@@ -25,6 +25,10 @@ Work package B1 asks for Glue Spark jobs that conform schemas, reject malformed 
 8. **Integrity:** the files read must contain exactly the manifest's record count, otherwise `BronzeMismatchError`.
 9. **Provenance columns:** `_batch_id`, `_source_file`, `_source_line_hash`, `_row_hash`, `_silver_updated_at`.
 10. **Local testing** uses Spark 3.5.6, Iceberg 1.10.0 and Java 17, the versions Glue 5.1 bundles per the AWS Glue Iceberg documentation, with a Hadoop catalog. CI installs Temurin 17.
+    *Amended 2026-11-11:* local PySpark is 3.5.8, a patch release in the same 3.5 line, to fix a
+    Spark History Server stored-XSS advisory (Dependabot alert 1; affects < 3.5.8). The History
+    Server is never started here and Glue still runs 3.5.6. The Spark suite (`pytest -m spark`)
+    runs on 3.5.8 in CI (Temurin 17).
 
 ## Consequences
 - **Tested locally end to end** (PostgreSQL → snapshot → Silver): every table reconciles with the source, values are exact, re-apply is a no-op, source updates and deletes propagate, stale batches are refused, the quality gate blocks, and Bronze/manifest mismatches are caught. The rejected-row retention rule was mutation-checked: without it, the row is deleted and the test fails.

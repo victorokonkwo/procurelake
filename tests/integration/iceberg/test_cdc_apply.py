@@ -1,4 +1,4 @@
-"""CDC apply into Silver Iceberg (local Spark 3.5.6 + Iceberg 1.10.0; DynamoDB via moto).
+"""CDC apply into Silver Iceberg (local Spark 3.5.8 + Iceberg 1.10.0; DynamoDB via moto).
 
 Fixtures are Parquet files with the schema AWS DMS wrote in dev on 2026-11-10 (ADR 0027,
 docs/evidence/sprint1-week5-cdc-bronze-live.md): ``Op`` string, ``_dms_commit_ts`` string,
