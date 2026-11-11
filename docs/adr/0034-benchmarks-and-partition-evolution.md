@@ -24,7 +24,7 @@
     - Spark (CI): `tests/integration/iceberg/test_partition_evolution.py`, plus two tests in
       `test_silver_pipeline.py`
     - Terraform: `bench_jobs_touch_only_the_bench_namespace`, and the two `glue_catalog` runs
-- **Evidence:** `docs/benchmarks/2026-11-11-bench-100k.md`
+- **Evidence:** `docs/benchmarks/2026-11-11-bench-100k-1m.md`
 
 ## Context
 Work package G needs:
@@ -99,7 +99,19 @@ The owner decided on 2026-11-11:
   The open part is time partitioning and Gold. The 100k evidence argues against monthly Silver
   partitions *at this volume*: they produce 60+ files of 30–120 KB each and save nothing
   billable. The 1M run is the deciding measurement.
-- **Silver load time is mostly fixed overhead.** A rerun that skipped every table took 487 s,
+- **Measured at 1M** (1,042,769 rows, the same day):
+  - Silver took 3,242 s (6,485 DPU-s, about $0.79) after a first attempt hit the 30-minute
+    timeout. The bench job now has 120 minutes.
+  - Invoices took 35 of those minutes at about 245 rows/s, against about 500 rows/s for awards
+    and purchase orders. Re-parsing JSON per column in validation is the suspect, not yet
+    profiled.
+  - Gold took 41.5 s, against 38.9 s at 100k.
+  - Pruning held (−91% / −97% bytes), but engine time stayed at 0.6–0.85 s, and every scan
+    stayed under Athena's 10 MB billing minimum.
+  - The monthly rewrite no longer grew storage (invoices −1%, awards +8%).
+  - **Recommendation for OQ13:** keep `tenant_id`-only Silver partitioning until a
+    date-filtered Silver scan exceeds 10 MB.
+- **Silver load time is mostly fixed overhead at 100k.** A rerun that skipped every table took 487 s,
   because the job reads and validates Bronze before it checks the applied batch. A cheap fix
   (check first) is recorded, not made.
 - **Two defects found and fixed while running:**
