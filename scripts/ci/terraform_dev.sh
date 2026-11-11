@@ -58,7 +58,7 @@ EOF
   summary="$(terraform -chdir="$dir" show -json ci.tfplan | python3 scripts/ci/tf_plan_summary.py "$root")"
   changes="$(jq -r .changes <<<"$summary")"
   fingerprint="$(jq -r .fingerprint <<<"$summary")"
-  jq -r .markdown <<<"$summary" >>"$SUMMARY"
+  jq -r .markdown <<<"$summary" | tee -a "$SUMMARY" # addresses and actions only
   total=$((total + changes))
 
   if [[ "$MODE" == plan ]]; then

@@ -209,6 +209,14 @@ resource "aws_iam_role_policy" "github_plan" {
     Version = "2012-10-17"
     Statement = concat(local.state_access_statements, [
       {
+        # Reads terraform plan needs that the managed ReadOnlyAccess policy lacks (first CI plan,
+        # 2026-11-11: refreshing aws_lakeformation_opt_in in dev/security). Read-only.
+        Sid      = "ReadsMissingFromReadOnlyAccess"
+        Effect   = "Allow"
+        Action   = ["lakeformation:ListLakeFormationOptIns"]
+        Resource = "*"
+      },
+      {
         # ReadOnlyAccess includes s3:GetObject everywhere. CI must never read lake data. The only
         # exceptions are state and the deployed Glue code (scripts and wheels under glue/ in the
         # artifacts bucket), which terraform plan must read to refresh those aws_s3_object
