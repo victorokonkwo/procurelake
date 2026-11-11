@@ -1,12 +1,19 @@
 # Ground-truth labels for the contract extraction evaluation (ADR 0032). Drafted by reading each
 # PDF page by page (pdftotext text layer; scanned or image-only pages rendered with pdftoppm and
 # read as images), recording only what the document itself prints, under the rules of
-# prompts/contract_extraction_v1.md. Not yet checked by a human: see checked_by.
-labels_version: 1
+# prompts/contract_extraction_v1.md.
+#
+# Owner check, 2026-11-11: the owner settled the six judgement calls the drafter raised by
+# accepting the assistant's proposed resolutions (contractor/issuer not printed in a block ->
+# empty; a modification's amount is its change; "See Block 16C/20C" and "Date of Order" count as
+# the effective date; one-CLIN description counts as category, several CLINs do not;
+# handwritten dates as read). This was a decision on rules, not a page-by-page re-read of every
+# label: results must be reported with that caveat.
+labels_version: 2
 labelled_by: "Claude (AI assistant), drafted from the PDFs"
 labelled_on: 2026-11-11
-checked_by: null
-checked_on: null
+checked_by: "Victor Okonkwo (owner): accepted the proposed resolutions of the 6 judgement calls; no page-level re-read"
+checked_on: 2026-11-11
 method: "Read each document's pages (text layer, or the rendered page image for scans) and recorded what is printed, under the rules of prompts/contract_extraction_v1.md; nothing was filled from USAspending or general knowledge."
 documents:
   doe-bnl-desc0012704-mod0002:
@@ -34,8 +41,7 @@ documents:
       contract_amount:
         value: "321422167.89"
         page: 1
-        accept: ["356422167.89"]
-        note: "amount_type: modification_change; currency USD. 'Net Increase' and 'Total Amount for this Modification: $321,422,167.89'. The document also prints the new total 'from $35,000,000.00 to $356,422,167.89' (item 00001 total, page 2), accepted as an alternative because the prompt's 'most specific total' rule does not decide between the two; reviewer to confirm."
+        note: "amount_type: modification_change; currency USD. 'Net Increase' and 'Total Amount for this Modification: $321,422,167.89'. The new total 'from $35,000,000.00 to $356,422,167.89' (item 00001, page 2) is not accepted: owner decision 2026-11-11, a modification's own amount is its change."
   doe-bnl-desc0012704-mod0012:
     document_type: modification
     fields:
