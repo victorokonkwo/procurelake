@@ -77,6 +77,10 @@ def test_valid_row_is_typed_exactly(spark):
         ("not json at all", ["unparseable_json"]),
         (_line(award_amount="lots"), ["type_mismatch:award_amount"]),
         (_line(awarded_at="yesterday"), ["type_mismatch:awarded_at"]),
+        # Presence comes from one map<string,string> parse (ADR 0034): non-string JSON values
+        # must still count as supplied, so a wrong type is a type_mismatch, never not_null.
+        (_line(award_amount={"value": 1}), ["type_mismatch:award_amount"]),
+        (_line(award_amount=[1, 2]), ["type_mismatch:award_amount"]),
         (_line(supplier_id=...), ["not_null:supplier_id"]),
         (_line(supplier_id=None), ["not_null:supplier_id"]),
         (_line(status="suspended"), ["not_allowed:status"]),

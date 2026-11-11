@@ -20,6 +20,7 @@ from procurelake.lakehouse.silver.spec import SilverTableSpec
 
 RAW = "_raw_line"
 FILE = "_source_file"
+PRESENT = "_present_values"  # every top-level JSON value as text; null when JSON null/absent
 
 
 def read_bronze_lines(spark: SparkSession, paths: list[str]) -> DataFrame:
@@ -27,11 +28,6 @@ def read_bronze_lines(spark: SparkSession, paths: list[str]) -> DataFrame:
     if not paths:
         return spark.createDataFrame([], f"{RAW} string, {FILE} string")
     return spark.read.text(paths).select(F.col("value").alias(RAW), F.input_file_name().alias(FILE))
-
-
-def _present(column: str) -> Column:
-    """True when the raw JSON line has a non-null value for ``column``."""
-    return F.get_json_object(F.col(RAW), f"$.{column}").isNotNull()
 
 
 def with_reasons(df: DataFrame, spec: SilverTableSpec, is_object: Column, present) -> DataFrame:
@@ -80,9 +76,21 @@ def validate(lines: DataFrame, spec: SilverTableSpec, batch_id: str) -> tuple[Da
     parsed = parsed.withColumn(
         "_is_object", F.col(RAW).rlike(r"^\s*\{.*\}\s*$") & F.col("_parsed").isNotNull()
     )
+    # Presence ("the source supplied a non-null value") from ONE parse of the line into a
+    # string map, instead of a get_json_object call per column check: a JSON null is a null map
+    # value, and any other scalar, object or array is its text, so this matches the former per-column
+    # ``get_json_object(line, '$.<column>') IS NOT NULL``.
+    # Measured motivation (ADR 0034): at 1M rows, invoices validated at about 245 rows/s.
+    parsed = parsed.withColumn(PRESENT, F.from_json(F.col(RAW), "map<string,string>"))
     for name, _ in spec.columns:
         parsed = parsed.withColumn(name, F.col(f"_parsed.`{name}`"))
-    with_reasons_df = with_reasons(parsed, spec, F.col("_is_object"), _present)
+    with_reasons_df = with_reasons(
+        parsed, spec, F.col("_is_object"), lambda name: F.col(PRESENT)[name].isNotNull()
+    ).drop(PRESENT)
+    # The valid and rejected outputs below are two branches of this frame; without this the
+    # parse and every check run once per branch. localCheckpoint materialises it once on the
+    # executors (no unpersist needed: it is released with the frame).
+    with_reasons_df = with_reasons_df.localCheckpoint(eager=True)
     clean = with_reasons_df.where(F.size("reasons") == 0)
     bad = with_reasons_df.where(F.size("reasons") > 0)
 
