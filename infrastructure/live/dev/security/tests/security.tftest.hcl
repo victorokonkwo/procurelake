@@ -39,6 +39,7 @@ variables {
   aws_account_id       = "123456789012"
   state_bucket         = "procurelake-tfstate-123456789012-ca-central-1"
   data_lake_admin_arns = ["arn:aws:iam::123456789012:user/operator"]
+  operator_arns        = ["arn:aws:iam::123456789012:user/operator"]
 }
 
 run "account_defaults_stay_iam_governed" {
@@ -154,5 +155,21 @@ run "access_check_queries_every_mart_as_every_tenant" {
   assert {
     condition     = alltrue([for p in [aws_iam_role_policy.exports, aws_iam_role_policy.access_check] : anytrue([for s in jsondecode(p.policy).Statement : s.Sid == "EncryptAlert"])])
     error_message = "Publishing to the KMS-encrypted alerts topic needs the data key."
+  }
+}
+
+run "tenant_and_admin_roles_trust_only_named_principals" {
+  command = apply
+
+  assert {
+    condition = alltrue([for t in aws_iam_role.tenant :
+      toset(jsondecode(t.assume_role_policy).Statement[0].Condition.ArnEquals["aws:PrincipalArn"]) == toset([
+        "arn:aws:iam::123456789012:user/operator", aws_iam_role.exports.arn, aws_iam_role.access_check.arn,
+    ])])
+    error_message = "Tenant roles may be assumed only by the operator and the exports and access-check state machines (ADR 0037)."
+  }
+  assert {
+    condition     = jsondecode(aws_iam_role.admin.assume_role_policy).Statement[0].Condition.ArnEquals["aws:PrincipalArn"] == ["arn:aws:iam::123456789012:user/operator"]
+    error_message = "The admin role may be assumed only by the operator."
   }
 }

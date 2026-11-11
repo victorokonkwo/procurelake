@@ -8,6 +8,7 @@
 #                             a replication instance").
 
 data "aws_availability_zones" "available" {
+  # checkov:skip=CKV_AWS_394: only the first two available zone names are used for subnets; a changed list would show up as a planned subnet replacement, never silently
   state = "available"
 }
 
@@ -20,6 +21,14 @@ resource "aws_vpc" "this" {
   enable_dns_support   = true
   enable_dns_hostnames = true
   tags                 = merge(var.tags, { Name = var.name })
+}
+
+# The VPC's default security group, managed with no rules: it denies all traffic, so anything
+# launched without an explicit group gets no network access. Every workload here has its own
+# group (Checkov CKV2_AWS_12; ADR 0037).
+resource "aws_default_security_group" "this" {
+  vpc_id = aws_vpc.this.id
+  tags   = merge(var.tags, { Name = "${var.name}-default-deny" })
 }
 
 resource "aws_internet_gateway" "this" {

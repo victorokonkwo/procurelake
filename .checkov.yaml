@@ -1,0 +1,46 @@
+# Checkov 3.3.30 configuration for ci-security.yml (ADR 0037).
+#
+# Findings tied to one resource are fixed, or waived inline on that resource
+# (`# checkov:skip=<id>: <reason>`). The checks below are skipped repository-wide: each is a
+# deliberate choice for this single-account, single-region dev reference implementation
+# (ADR 0011), with the reason beside it and a row in ADR 0037. Revisit them before any
+# production use.
+framework:
+  - terraform
+directory:
+  - infrastructure
+skip-path:
+  - \.terraform
+compact: true
+quiet: true
+skip-check:
+  # S3 cross-region replication: one region by design (ADR 0001, ADR 0011). Bronze is kept by
+  # versioning and never expires (ADR 0019); replication would double storage cost.
+  - CKV_AWS_144
+  # S3 server access logs: CloudTrail management events cover bucket changes; object-level
+  # access logging is a production control (log bucket, retention, cost), not built in dev.
+  - CKV_AWS_18
+  # S3 event notifications: no consumer needs them; pipelines are scheduled (ADR 0029).
+  - CKV2_AWS_62
+  # CloudWatch Logs retention of 1 year: 30 days in dev for cost; run evidence that must last
+  # is written to S3 (run summaries, reports, manifests).
+  - CKV_AWS_338
+  # CloudWatch Logs KMS encryption: log groups use CloudWatch's default encryption at rest. A
+  # customer-managed key needs a logs service grant in the data key policy (follow-up).
+  - CKV_AWS_158
+  # Glue security configuration: job output to S3 is SSE-KMS by bucket default (data key),
+  # job bookmarks are disabled (ADR 0025), and log encryption follows CKV_AWS_158.
+  - CKV_AWS_195
+  # Step Functions X-Ray tracing and execution logging: Standard workflows keep execution
+  # history for 90 days, and every state machine alarms on failure (ADR 0031).
+  - CKV_AWS_284
+  - CKV_AWS_285
+  # EventBridge Scheduler customer-managed key: schedule payloads hold only a job or state
+  # machine name, nothing sensitive.
+  - CKV_AWS_297
+  # VPC flow logs: the only VPCs are the dbt runner's (no ingress, HTTPS egress only) and the
+  # disposable CDC stack's; flow logs are a production control.
+  - CKV2_AWS_11
+  # ECS Container Insights: per-run task logs and the state machine alarms suffice for one
+  # short dbt task; Insights is billed per metric.
+  - CKV_AWS_65

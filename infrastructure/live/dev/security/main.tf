@@ -133,16 +133,20 @@ module "tenant_workgroup" {
 }
 
 resource "aws_iam_role" "tenant" {
+  # checkov:skip=CKV_AWS_61: trust limited by an aws:PrincipalArn condition to the operator and two state machine roles (ADR 0037); Checkov ignores conditions
   for_each = toset(var.tenants)
 
   name        = "procurelake-dev-${replace(each.value, "_", "-")}"
   description = "Consumer role for synthetic tenant ${each.value}: Gold through Lake Formation only."
+  # Only the operator (tests, drills) and the two state machines that act as a tenant (daily
+  # exports, the access check) may assume it, not any principal in the account (ADR 0037).
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
       Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
       Action    = "sts:AssumeRole"
+      Condition = { ArnEquals = { "aws:PrincipalArn" = concat(var.operator_arns, [aws_iam_role.exports.arn, aws_iam_role.access_check.arn]) } }
     }]
   })
   max_session_duration = 3600
@@ -325,6 +329,7 @@ module "admin_workgroup" {
 }
 
 resource "aws_iam_role" "admin" {
+  # checkov:skip=CKV_AWS_61: trust limited by an aws:PrincipalArn condition to the operator (ADR 0037); Checkov ignores conditions
   name        = "procurelake-dev-analytics-admin"
   description = "Cross-tenant analytics administrator: tenant-facing Gold marts, all tenants, through Lake Formation only."
   assume_role_policy = jsonencode({
@@ -333,6 +338,7 @@ resource "aws_iam_role" "admin" {
       Effect    = "Allow"
       Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
       Action    = "sts:AssumeRole"
+      Condition = { ArnEquals = { "aws:PrincipalArn" = var.operator_arns } } # ADR 0037
     }]
   })
 }

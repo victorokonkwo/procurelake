@@ -65,6 +65,7 @@ resource "aws_vpc_security_group_ingress_rule" "replication" {
 # Security group for the DMS replication instance, created here so the database rule can
 # reference it before DMS exists. DMS needs all egress (AWS DMS User Guide).
 resource "aws_security_group" "replication" {
+  # checkov:skip=CKV2_AWS_5: false positive: attached to the DMS replication instance by the dms_s3_cdc module (security_group_id)
   name        = "${var.name}-replication"
   description = "AWS DMS replication instance: no ingress; all egress (VPC endpoints, RDS)."
   vpc_id      = var.vpc_id
@@ -79,6 +80,14 @@ resource "aws_vpc_security_group_egress_rule" "replication_all" {
 }
 
 resource "aws_db_instance" "this" {
+  # checkov:skip=CKV_AWS_17: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down); publicly reachable only from operator_cidrs through its security group, TLS required
+  # checkov:skip=CKV_AWS_157: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down); single-AZ by design
+  # checkov:skip=CKV_AWS_161: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down); password auth from a KMS-encrypted managed secret
+  # checkov:skip=CKV_AWS_293: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down); deletion is the intended end of every session
+  # checkov:skip=CKV_AWS_353: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down)
+  # checkov:skip=CKV_AWS_129: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down)
+  # checkov:skip=CKV_AWS_118: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down)
+  # checkov:skip=CKV_AWS_226: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down); engine version pinned (ADR 0015), so no unplanned minor upgrades mid-test
   identifier     = var.name
   engine         = "postgres"
   engine_version = var.engine_version
@@ -119,6 +128,7 @@ ephemeral "aws_secretsmanager_random_password" "replication" {
 }
 
 resource "aws_secretsmanager_secret" "replication" {
+  # checkov:skip=CKV2_AWS_57: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down); the secret lives only as long as the stack
   name                    = "${var.name}/replication-user"
   description             = "PostgreSQL user for AWS DMS (rds_replication + SELECT on the procurement schema)."
   kms_key_id              = var.kms_key_arn

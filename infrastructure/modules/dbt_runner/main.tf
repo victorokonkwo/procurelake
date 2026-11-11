@@ -55,6 +55,7 @@ resource "aws_cloudwatch_log_group" "this" {
 }
 
 resource "aws_security_group" "task" {
+  # checkov:skip=CKV2_AWS_5: false positive: attached to each dbt Fargate task at RunTask (state machine NetworkConfiguration)
   name        = "${var.name}-task"
   description = "dbt runner tasks: no ingress; HTTPS egress to AWS APIs."
   vpc_id      = var.vpc_id

@@ -39,6 +39,9 @@ locals {
 }
 
 resource "aws_s3_bucket" "this" {
+  # checkov:skip=CKV2_AWS_6: false positive: aws_s3_bucket_public_access_block.this blocks all public access for every bucket (verified live, ADR 0019)
+  # checkov:skip=CKV_AWS_145: false positive: aws_s3_bucket_server_side_encryption_configuration.this sets SSE-KMS with the data key for every bucket
+  # checkov:skip=CKV_AWS_21: false positive: aws_s3_bucket_versioning.this enables versioning for every bucket
   for_each = local.buckets
 
   bucket        = "${var.name_prefix}-${each.key}-${var.aws_account_id}-${var.region}"

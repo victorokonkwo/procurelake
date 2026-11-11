@@ -7,3 +7,6 @@ data_lake_admin_arns = ["arn:aws:iam::123456789012:user/operator"]
 # read-only admin so terraform plan sees every grant. Keep this file and the CI inputs in step.
 #   data_lake_admin_arns = ["arn:aws:iam::123456789012:user/operator", "arn:aws:iam::123456789012:role/procurelake-github-deploy-dev"]
 data_lake_read_only_admin_arns = ["arn:aws:iam::123456789012:role/procurelake-github-plan"]
+
+# Who may assume the tenant/admin/AI roles (ADR 0037).
+operator_arns = ["arn:aws:iam::123456789012:user/operator"]

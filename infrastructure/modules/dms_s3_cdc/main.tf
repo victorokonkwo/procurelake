@@ -141,6 +141,7 @@ resource "aws_dms_replication_subnet_group" "this" {
 }
 
 resource "aws_dms_replication_instance" "this" {
+  # checkov:skip=CKV_AWS_222: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down); engine version pinned
   replication_instance_id     = var.name
   replication_instance_class  = var.instance_class
   engine_version              = var.engine_version
@@ -156,6 +157,7 @@ resource "aws_dms_replication_instance" "this" {
 }
 
 resource "aws_dms_endpoint" "source" {
+  # checkov:skip=CKV_AWS_296: Disposable CDC source (ADR 0027): synthetic data, created for a CDC session and destroyed after it (make cdc-down); credentials come from Secrets Manager (KMS data key), not endpoint settings
   endpoint_id                     = "${var.name}-source"
   endpoint_type                   = "source"
   engine_name                     = "postgres"
@@ -178,6 +180,7 @@ resource "aws_dms_endpoint" "source" {
 }
 
 resource "aws_dms_s3_endpoint" "target" {
+  # checkov:skip=CKV_AWS_298: false positive: encryption_mode = SSE_KMS with server_side_encryption_kms_key_id = the data key
   endpoint_id             = "${var.name}-bronze"
   endpoint_type           = "target"
   bucket_name             = var.raw_bucket_name

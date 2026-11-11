@@ -56,6 +56,7 @@ override_data {
 }
 
 variables {
+  operator_arns  = ["arn:aws:iam::123456789012:user/operator"]
   aws_account_id = "123456789012"
   state_bucket   = "procurelake-tfstate-123456789012-ca-central-1"
   dist_dir       = "../../../modules/glue_spark_job/tests/fixtures"

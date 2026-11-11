@@ -42,5 +42,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0034 | Benchmarks in an isolated namespace (`postgres_bench`, bench Silver/Gold); partition evolution in Spark; CDC lineage columns on every Silver table | Accepted (resolves OQ13) | [0034-benchmarks-and-partition-evolution.md](0034-benchmarks-and-partition-evolution.md) |
 | 0035 | CI deploys: plan on pull requests, owner-approved apply on dev, fingerprint-checked (GitHub Actions + OIDC) | Accepted (verified end to end) | [0035-ci-deploys-github-actions.md](0035-ci-deploys-github-actions.md) |
 | 0036 | Scoped CI deploy role: ReadOnlyAccess plus procurelake-dev writes, explicit denies (replaces AdministratorAccess) | Accepted (applied; used by CI) | [0036-scoped-ci-deploy-role.md](0036-scoped-ci-deploy-role.md) |
+| 0037 | Security scanners in CI (Checkov, pip-audit, gitleaks) and the hardening they prompted (role trusts, default SGs, dbt task policy) | Accepted | [0037-security-scanning-and-hardening.md](0037-security-scanning-and-hardening.md) |
 
 Update the **ADR file** column as each ADR is written.
