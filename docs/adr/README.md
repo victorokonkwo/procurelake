@@ -39,6 +39,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0031 | Monitoring: CDC metrics, CloudWatch alarms and EventBridge to SNS, silent-stall drill | Accepted | [0031-monitoring-and-alerting.md](0031-monitoring-and-alerting.md) |
 | 0032 | AI contract extraction: Claude Haiku 5.5 in Canada, evidence checks, human review | Accepted (live run blocked on model access) | [0032-ai-contract-extraction.md](0032-ai-contract-extraction.md) |
 | 0033 | Iceberg maintenance: compaction after each dbt merge, daily OPTIMIZE/VACUUM job with layer retention | Accepted | [0033-iceberg-maintenance.md](0033-iceberg-maintenance.md) |
-| 0034 | Benchmarks in an isolated namespace (`postgres_bench`, bench Silver/Gold); partition evolution in Spark; CDC lineage columns on every Silver table | Accepted (OQ13 decision pending) | [0034-benchmarks-and-partition-evolution.md](0034-benchmarks-and-partition-evolution.md) |
+| 0034 | Benchmarks in an isolated namespace (`postgres_bench`, bench Silver/Gold); partition evolution in Spark; CDC lineage columns on every Silver table | Accepted (resolves OQ13) | [0034-benchmarks-and-partition-evolution.md](0034-benchmarks-and-partition-evolution.md) |
 
 Update the **ADR file** column as each ADR is written.

@@ -1,7 +1,7 @@
 # ADR 0034: Benchmarks in an isolated namespace; partition evolution in Spark
 
-- **Status:** Accepted. The partitioning decision itself, open question 13, is still open; this
-  ADR records the evidence for it.
+- **Status:** Accepted. It also resolves open question 13: the owner accepted the partitioning
+  recommendation on 2026-11-11 (Decision 6).
 - **Date:** 2026-11-11
 - **Implementation:**
   - Snapshot and Silver namespaces: `source_system` in
@@ -85,6 +85,19 @@ The owner decided on 2026-11-11:
    - `compare` refuses layouts whose answers differ, so a speed-up is never reported for a
      different result.
 
+6. **Partitioning (open question 13; owner decision, 2026-11-11).**
+   - Tenant-owned Silver tables stay partitioned by `tenant_id` only
+     (`configs/pipelines/silver`).
+   - Gold stays unpartitioned, as dbt builds it now.
+   - **Trigger to revisit:** when a date-filtered Silver scan exceeds Athena's 10 MB per-query
+     billing minimum, add `months()` on `silver_invoices.invoice_date` and
+     `silver_awards.awarded_at` through the partition-evolution job, then rewrite once.
+   - **Why:** up to 1M rows, month partitions cut bytes read on date-filtered queries by 91–97%,
+     but saved neither engine time nor money (every scan was under the minimum). Before the
+     trigger, they only add files.
+   - Gold was measured at the same sizes (its largest scan was 2.6 MB) but was not tested with
+     partitions; the same trigger applies to it.
+
 ## Consequences
 - **Measured at 100k** (details and costs in the benchmark doc):
   - **Load:** 105,725 rows into Bronze in 12 s, Silver in 511 s, Gold in 38.9 s (75/75 dbt
@@ -112,8 +125,7 @@ The owner decided on 2026-11-11:
   - Pruning held (−91% / −97% bytes), but engine time stayed at 0.6–0.85 s, and every scan
     stayed under Athena's 10 MB billing minimum.
   - The monthly rewrite no longer grew storage (invoices −1%, awards +8%).
-  - **Recommendation for OQ13:** keep `tenant_id`-only Silver partitioning until a
-    date-filtered Silver scan exceeds 10 MB.
+  - That evidence is the basis of Decision 6.
 - **Silver load time is mostly fixed overhead at 100k.** A rerun that skipped every table took 487 s,
   because the job reads and validates Bronze before it checks the applied batch. A cheap fix
   (check first) is recorded, not made.
