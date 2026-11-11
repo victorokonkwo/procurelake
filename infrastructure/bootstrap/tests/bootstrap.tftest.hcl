@@ -44,8 +44,8 @@ run "github_plan_role_trusts_only_prs_and_dev_branch" {
 
   assert {
     condition = toset(jsondecode(aws_iam_role.github_plan.assume_role_policy).Statement[0].Condition.StringLike["token.actions.githubusercontent.com:sub"]) == toset([
-      "repo:victorokonkwo/procurelake:pull_request",
-      "repo:victorokonkwo/procurelake:ref:refs/heads/dev",
+      "repo:victorokonkwo@42738051/procurelake@1452285010:pull_request",
+      "repo:victorokonkwo@42738051/procurelake@1452285010:ref:refs/heads/dev",
     ])
     error_message = "Plan role must trust only pull requests and the dev branch of this repo."
   }
@@ -55,8 +55,11 @@ run "github_plan_role_trusts_only_prs_and_dev_branch" {
   }
   assert {
     condition = anytrue([for s in jsondecode(aws_iam_role_policy.github_plan.policy).Statement :
-    s.Effect == "Deny" && contains(s.Action, "s3:GetObject") && s.NotResource == "${aws_s3_bucket.state.arn}/*"])
-    error_message = "Plan role must be denied reading any S3 object except Terraform state."
+      s.Effect == "Deny" && contains(s.Action, "s3:GetObject") && toset(s.NotResource) == toset([
+        "${aws_s3_bucket.state.arn}/*",
+        "arn:aws:s3:::procurelake-dev-artifacts-123456789012-ca-central-1/glue/*",
+    ])])
+    error_message = "Plan role must be denied reading any S3 object except Terraform state and the deployed Glue code."
   }
 }
 
@@ -64,7 +67,7 @@ run "github_deploy_role_trusts_only_dev_environment" {
   command = apply
 
   assert {
-    condition     = jsondecode(aws_iam_role.github_deploy_dev.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:victorokonkwo/procurelake:environment:dev"
+    condition     = jsondecode(aws_iam_role.github_deploy_dev.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:victorokonkwo@42738051/procurelake@1452285010:environment:dev"
     error_message = "Deploy role must trust only the GitHub 'dev' environment."
   }
 }

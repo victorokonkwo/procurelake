@@ -124,7 +124,8 @@ dbt-image: ## Build the dbt runner image (ARM64), push it to ECR, record its dig
 	  docker push $$REPO:$$TAG && \
 	  mkdir -p build && \
 	  docker image inspect $$REPO:$$TAG --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep "^$$REPO@" | head -1 | cut -d@ -f2 > $(DBT_DIGEST_FILE) && \
-	  echo "pushed $$REPO:$$TAG digest $$(cat $(DBT_DIGEST_FILE))"
+	  echo "pushed $$REPO:$$TAG digest $$(cat $(DBT_DIGEST_FILE))" && \
+	  echo "CI deploys the digest in the DBT_IMAGE_DIGEST repository variable (ADR 0035): gh variable set DBT_IMAGE_DIGEST --body \"\$$(cat $(DBT_DIGEST_FILE))\""
 
 .PHONY: orchestration-run
 orchestration-run: ## Start cdc_processing once by hand and wait (dev/cdc must be up)

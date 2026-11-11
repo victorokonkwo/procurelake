@@ -46,7 +46,7 @@ provider "aws" {
 locals {
   state_bucket_name = "procurelake-tfstate-${var.aws_account_id}-${var.region}"
   github_oidc_host  = "token.actions.githubusercontent.com"
-  repo_subject      = "repo:${var.github_repository}"
+  repo_subject      = var.github_oidc_subject_prefix
 }
 
 # ----------------------------------------------------------------------------- 1. cost budget
@@ -209,11 +209,25 @@ resource "aws_iam_role_policy" "github_plan" {
     Version = "2012-10-17"
     Statement = concat(local.state_access_statements, [
       {
-        # ReadOnlyAccess includes s3:GetObject everywhere. CI must never read lake data.
-        Sid         = "DenyReadingPlatformData"
-        Effect      = "Deny"
-        Action      = ["s3:GetObject", "s3:GetObjectVersion"]
-        NotResource = "${aws_s3_bucket.state.arn}/*"
+        # Reads terraform plan needs that the managed ReadOnlyAccess policy lacks (first CI plan,
+        # 2026-11-11: refreshing aws_lakeformation_opt_in in dev/security). Read-only.
+        Sid      = "ReadsMissingFromReadOnlyAccess"
+        Effect   = "Allow"
+        Action   = ["lakeformation:ListLakeFormationOptIns"]
+        Resource = "*"
+      },
+      {
+        # ReadOnlyAccess includes s3:GetObject everywhere. CI must never read lake data. The only
+        # exceptions are state and the deployed Glue code (scripts and wheels under glue/ in the
+        # artifacts bucket), which terraform plan must read to refresh those aws_s3_object
+        # resources. That prefix holds code built from this public repository, never data.
+        Sid    = "DenyReadingPlatformData"
+        Effect = "Deny"
+        Action = ["s3:GetObject", "s3:GetObjectVersion"]
+        NotResource = [
+          "${aws_s3_bucket.state.arn}/*",
+          "arn:aws:s3:::procurelake-dev-artifacts-${var.aws_account_id}-${var.region}/glue/*",
+        ]
       },
     ])
   })

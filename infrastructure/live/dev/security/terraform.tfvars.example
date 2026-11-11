@@ -3,3 +3,7 @@ aws_account_id = "123456789012"
 state_bucket   = "procurelake-tfstate-123456789012-ca-central-1"
 # Lake Formation data lake administrators. PutDataLakeSettings REPLACES the whole list.
 data_lake_admin_arns = ["arn:aws:iam::123456789012:user/operator"]
+# CI (ADR 0035): the GitHub deploy role must be an admin to apply grants, and the plan role a
+# read-only admin so terraform plan sees every grant. Keep this file and the CI inputs in step.
+#   data_lake_admin_arns = ["arn:aws:iam::123456789012:user/operator", "arn:aws:iam::123456789012:role/procurelake-github-deploy-dev"]
+data_lake_read_only_admin_arns = ["arn:aws:iam::123456789012:role/procurelake-github-plan"]
