@@ -15,6 +15,17 @@ These are **design targets to validate, not measured results**. Collect actual v
 
 Freshness is measured from the **source commit time** (captured by the DMS `TimestampColumnName` setting) to **Gold availability**.
 
+### Measured so far (dev, synthetic data)
+
+| SLI | Measured | Where |
+|---|---|---|
+| CDC freshness | p95 190–204 s to Gold in two normal runs (42 and 47 changes). In the stall drill, 18.5 min for the 25 stalled changes (target missed, alarm fired) | `docs/evidence/sprint1-week5-cdc-freshness-live.md`, `docs/incidents/2026-11-10-cdc-dms-stall-drill.md` |
+| CDC correctness | 0 duplicate keys in Silver after replay and after the stall recovery; 0 lost changes | Week 5 evidence, the incident report |
+| Tenant isolation | 0 cross-tenant rows in queries, exports and the access check; the drilled foreign-row case was caught | `docs/evidence/sprint1-week7-tenant-products-live.md` |
+| Recovery | Stall: resume from the DMS checkpoint, all changes in Gold 5.8 min later, no manual data repair | incident report |
+
+Each is one measurement in dev, not a sustained SLO.
+
 ## 2. Observability components
 
 | Component | Implementation |
@@ -24,7 +35,7 @@ Freshness is measured from the **source commit time** (captured by the DMS `Time
 | Freshness monitoring | Source commit time → Gold availability |
 | CDC monitoring | DMS replication lag and task health |
 | Data quality | dbt tests and Glue validations |
-| Alert delivery | CloudWatch alarms → SNS |
+| Alert delivery | CloudWatch alarms and EventBridge → SNS (KMS-encrypted topic; `dev/observability`, `dev/cdc`; ADR 0031) |
 | Failed-record management | Quarantine prefix with rejection reason |
 | Lineage | dbt manifests, source-to-model documentation |
 | Catalog governance | Glue metadata, classifications, owners |

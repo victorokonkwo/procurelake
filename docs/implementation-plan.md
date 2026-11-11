@@ -152,10 +152,12 @@ Met on 2026-11-10 for the four tenant-facing marts and the daily exports (`make 
 SLI targets are in `docs/operations/slos_and_observability.md`. They are **design targets to validate**. Publish the actual measured values.
 
 **Completion gate**
-- [ ] Introduce a controlled CDC failure.
-- [ ] Monitoring detects it.
-- [ ] Recover the pipeline.
-- [ ] Write an incident report with evidence (`docs/runbooks/`, `observability/incident_templates/`).
+Met on 2026-11-10 with a silent DMS stall drill (ADR 0031, `docs/incidents/2026-11-10-cdc-dms-stall-drill.md`).
+
+- [x] Introduce a controlled CDC failure.
+- [x] Monitoring detects it.
+- [x] Recover the pipeline.
+- [x] Write an incident report with evidence (`docs/runbooks/`, `observability/incident_templates/`).
 
 ### Work package F: AI procurement intelligence (Week 9)
 

@@ -44,6 +44,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 
 37. **RDS certificate verification.** The operator scripts connect with `sslmode=require` and do not verify the server certificate against the RDS CA bundle (ADR 0027). Decide whether to pin the bundle (`verify-full`).
 38. **Tenant catalog visibility.** Tenant roles can read Glue metadata (table names and schemas, not rows) for every Gold table (ADR 0030). Decide whether to limit `glue:GetTable(s)` to the tenant-facing tables, or accept schema visibility.
+39. **DMS and freshness alarm tuning (Week 8 drill).** Three findings, measured but not explained. (a) The DMS latency alarm (5 of 5 one-minute periods, missing data breaching) went to ALARM 11.8 min after the task stopped, where about 5 min was expected; the EventBridge "task stopped" event arrived within a minute. (b) The same alarm fires once when the stack is created, before the task publishes metrics. (c) The freshness alarm stays in ALARM after a late batch until another batch arrives. Decide whether to alarm on the stopped event, suppress the startup alarm, and give freshness an explicit OK path.
 
 ## Naming inconsistencies between the source documents
 23. ~~Cycle-time mart name~~ **Resolved: ADR 0017** (`mart_procurement_cycle_time`).
