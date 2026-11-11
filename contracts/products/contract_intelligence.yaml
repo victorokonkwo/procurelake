@@ -1,0 +1,62 @@
+# Product contract: AI contract intelligence (Gold mart_ai_contract_intelligence, ADR 0032).
+contract_version: 1
+name: contract_intelligence
+model: mart_ai_contract_intelligence
+owner: data-platform
+description: >-
+  Approved attributes extracted by AI (Claude Haiku 5.5 on Amazon Bedrock, Canada profile) from
+  public US federal contract documents. Every value passed deterministic evidence checks or a
+  reviewer's correction, and a named reviewer approved the document. Public reference data, not
+  tenant data; not granted to tenant roles.
+grain: One row per document_id (its latest approved extraction).
+freshness: Updated when a review is approved; rebuilt by every dbt run.
+data_classification: public
+tenant_scoped: false
+primary_key: [document_id]
+semantics:
+  stated_amount: >-
+    The amount the document itself states (see amount_type: total contract value, obligated
+    amount, the change made by a modification, or other). It is not spend and not the award's
+    lifetime awarded value. Always in currency_code; never summed across currencies.
+  nulls: >-
+    A null field means the document does not state it, the model did not find it, or the reviewer
+    rejected it. Values are never inferred or filled in.
+columns:
+  - {name: document_id, type: string, nullable: false, description: Catalog document id.}
+  - {name: extraction_id, type: string, nullable: false, description: The approved extraction (time-ordered id).}
+  - {name: document_type, type: string, nullable: false, description: "award, modification, order or other."}
+  - {name: contract_id, type: string, nullable: true, description: Contract or order number (PIID) as printed.}
+  - {name: contract_id_page, type: integer, nullable: true, description: Page the contract number was read from.}
+  - {name: supplier_name, type: string, nullable: true, description: Contractor name as printed.}
+  - {name: supplier_name_page, type: integer, nullable: true, description: Evidence page.}
+  - {name: issuing_agency, type: string, nullable: true, description: Issuing agency or office as printed.}
+  - {name: issuing_agency_page, type: integer, nullable: true, description: Evidence page.}
+  - {name: effective_date, type: date, nullable: true, description: Effective date printed on the document.}
+  - {name: effective_date_page, type: integer, nullable: true, description: Evidence page.}
+  - {name: performance_start_date, type: date, nullable: true, description: Start of the period of performance, if printed.}
+  - {name: performance_end_date, type: date, nullable: true, description: End of the period of performance, if printed.}
+  - {name: contract_category, type: string, nullable: true, description: PSC or NAICS code, or the printed description.}
+  - {name: contract_category_page, type: integer, nullable: true, description: Evidence page.}
+  - {name: stated_amount, type: "decimal(38,2)", nullable: true, description: See semantics.}
+  - {name: currency_code, type: string, nullable: true, description: ISO 4217; present exactly when stated_amount is.}
+  - {name: amount_type, type: string, nullable: true, description: "total_contract_value, obligated_amount, modification_change or other."}
+  - {name: stated_amount_page, type: integer, nullable: true, description: Evidence page.}
+  - {name: approved_field_count, type: bigint, nullable: false, description: Number of approved fields.}
+  - {name: usaspending_award_id, type: string, nullable: false, description: Linked USAspending award (generated_unique_award_id).}
+  - {name: source_url, type: string, nullable: false, description: Where the PDF was downloaded.}
+  - {name: landing_page, type: string, nullable: true, description: Agency page listing the document, if known.}
+  - {name: license_basis, type: string, nullable: false, description: Why the document may be used (17 U.S.C. 105).}
+  - {name: pdf_sha256, type: string, nullable: false, description: SHA-256 of the PDF landed in Bronze.}
+  - {name: reviewer, type: string, nullable: false, description: Reviewer who approved the document.}
+  - {name: reviewed_at, type: timestamp, nullable: false, description: When it was approved (UTC).}
+  - {name: model_id, type: string, nullable: false, description: Bedrock model or inference profile used.}
+  - {name: prompt_version, type: string, nullable: false, description: Prompt version (configs/ai/prompts).}
+  - {name: schema_version, type: string, nullable: false, description: Extraction schema version.}
+  - {name: extracted_at, type: timestamp, nullable: false, description: When the extraction ran (UTC).}
+quality_tests:
+  - document_id unique and not null
+  - every value carries its evidence page; amount, currency and amount type present together
+  - the mart holds exactly the approved fields of each document's latest approved extraction in Silver
+compatibility: >-
+  Adding a column is compatible. Renaming or removing a column, or changing a type or the
+  meaning of stated_amount, is a breaking change and needs contract_version 2.

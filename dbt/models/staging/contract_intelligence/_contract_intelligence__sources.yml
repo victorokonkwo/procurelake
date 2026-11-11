@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: silver_ai
+    description: >-
+      Silver contract intelligence written by the AI extraction pipeline (src/procurelake/ai,
+      ADR 0032) after human review. Public US federal contract documents, a reference dataset
+      separate from the synthetic tenants.
+    schema: "{{ env_var('PROCURELAKE_SILVER_SCHEMA', 'procurelake_dev_silver') }}"
+    meta:
+      owner: data-platform
+    tables:
+      - name: silver_contract_intelligence
+        description: >-
+          One row per document, extraction and field: the model's value and evidence, the
+          deterministic check result, the review decision and the final value.
+        data_tests:
+          - unique_combination:
+              arguments: {columns: [document_id, extraction_id, field_name]}
+        columns:
+          - name: review_status
+            data_tests:
+              - accepted_values:
+                  arguments: {values: [approved, rejected]}
+          - name: review_action
+            data_tests:
+              - accepted_values:
+                  arguments: {values: [accept, correct, reject, not_extracted, document_rejected]}

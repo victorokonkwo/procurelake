@@ -36,6 +36,12 @@ models:
       +table_type: iceberg
       +format: parquet
       +s3_data_naming: schema_table_unique
+      # AI contract intelligence (ADR 0032) is public reference data, not tenant-facing, with no
+      # Lake Formation objects to lose: rebuilt in full each run, like core.
+      ai_intelligence:
+        +materialized: table
+        +incremental_strategy: null
+        +on_schema_change: null
 
 tests:
   procurelake:

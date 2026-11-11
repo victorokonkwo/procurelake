@@ -1,0 +1,408 @@
+{
+  "type": "object",
+  "properties": {
+    "document_type": {
+      "type": "string",
+      "enum": [
+        "award",
+        "modification",
+        "order",
+        "other"
+      ],
+      "description": "award, modification, order, or other."
+    },
+    "contract_id": {
+      "type": "object",
+      "description": "The contract, order or agreement number (PIID) the document belongs to, as printed. For an order, the order number, not the parent contract's.",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "description": "1-based page number of the quote."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Text copied exactly from that page that shows the value."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "page",
+        "quote"
+      ],
+      "additionalProperties": false
+    },
+    "supplier": {
+      "type": "object",
+      "description": "The contractor's name as printed.",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "description": "1-based page number of the quote."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Text copied exactly from that page that shows the value."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "page",
+        "quote"
+      ],
+      "additionalProperties": false
+    },
+    "issuing_agency": {
+      "type": "object",
+      "description": "The government agency or office that issued the document.",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "description": "1-based page number of the quote."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Text copied exactly from that page that shows the value."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "page",
+        "quote"
+      ],
+      "additionalProperties": false
+    },
+    "effective_date": {
+      "type": "object",
+      "description": "The date the document takes effect, as YYYY-MM-DD.",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "description": "1-based page number of the quote."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Text copied exactly from that page that shows the value."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "page",
+        "quote"
+      ],
+      "additionalProperties": false
+    },
+    "performance_start_date": {
+      "type": "object",
+      "description": "Start of the period of performance, as YYYY-MM-DD.",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "description": "1-based page number of the quote."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Text copied exactly from that page that shows the value."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "page",
+        "quote"
+      ],
+      "additionalProperties": false
+    },
+    "performance_end_date": {
+      "type": "object",
+      "description": "End of the period of performance, as YYYY-MM-DD.",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "description": "1-based page number of the quote."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Text copied exactly from that page that shows the value."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "page",
+        "quote"
+      ],
+      "additionalProperties": false
+    },
+    "contract_category": {
+      "type": "object",
+      "description": "What is being bought: the product or service code (PSC), NAICS code, or the short description of the supplies or services, as printed.",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "description": "1-based page number of the quote."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Text copied exactly from that page that shows the value."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "page",
+        "quote"
+      ],
+      "additionalProperties": false
+    },
+    "contract_amount": {
+      "type": "object",
+      "description": "The most specific total amount the document states, as a plain decimal number (no symbols or commas), with its ISO 4217 currency and which kind of amount it is.",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "page": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "description": "1-based page number of the quote."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Text copied exactly from that page that shows the value."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "ISO 4217 code, e.g. USD."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "amount_type": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "total_contract_value",
+                "obligated_amount",
+                "modification_change",
+                "other"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "page",
+        "quote",
+        "currency",
+        "amount_type"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "document_type",
+    "contract_id",
+    "supplier",
+    "issuing_agency",
+    "effective_date",
+    "performance_start_date",
+    "performance_end_date",
+    "contract_category",
+    "contract_amount"
+  ],
+  "additionalProperties": false
+}

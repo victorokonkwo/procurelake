@@ -194,14 +194,14 @@ dbt-parse: ## dbt parse (offline; no AWS access)
 	uv run --group dbt dbt parse $(DBT_DIRS)
 
 .PHONY: dbt-build
-dbt-build: ## dbt build (Gold models + tests) on dev Athena as the data-engineer role
+dbt-build: ## dbt build (Gold models + tests) on dev Athena as the data-engineer role [DBT_ARGS="--select ..."]
 	PROCURELAKE_DBT_S3_STAGING_DIR=s3://$(call BUCKET,artifacts)/athena_results/ \
 	PROCURELAKE_DBT_S3_DATA_DIR=s3://$(call BUCKET,lake)/gold/ \
 	PROCURELAKE_GOLD_SCHEMA=$$($(TFOUT) -raw gold_database_name) \
 	PROCURELAKE_SILVER_SCHEMA=$$($(TFOUT) -raw silver_database_name) \
 	PROCURELAKE_ATHENA_WORKGROUP=$$($(TFOUT) -raw athena_workgroup_name) \
 	uv run --group dbt python scripts/aws/with_role.py $$($(TFOUT) -raw data_engineer_role_arn) -- \
-	  uv run --group dbt dbt build $(DBT_DIRS)
+	  uv run --group dbt dbt build $(DBT_DIRS) $(DBT_ARGS)
 
 # CDC (ADR 0027): disposable, hourly-billed stack. Destroy it after every session (cdc-down).
 CDC_TF := infrastructure/live/dev/cdc
@@ -325,3 +325,43 @@ test-db: check-env ## PostgreSQL schema and migration tests (requires make db-up
 .PHONY: test
 test: check-env ## All tests (requires make db-up)
 	uv run pytest
+
+# ----------------------------------------------------------------------------- AI contract intelligence (ADR 0032)
+DPOUT = terraform -chdir=infrastructure/live/dev/data_platform output
+AI_CLI = uv run --group ai python -m procurelake.ai.cli
+AI_ROLE = --role-arn $$($(DPOUT) -raw ai_extraction_role_arn)
+AI_REVIEW = --review-table $$($(DPOUT) -raw ai_review_table_name)
+AI_SILVER = --workgroup $$($(TFOUT) -raw athena_workgroup_name) --silver-database $$($(TFOUT) -raw silver_database_name) --lake-bucket $(call BUCKET,lake)
+
+.PHONY: ai-land
+ai-land: ## Download the catalog's public contract PDFs + USAspending records into Bronze as the ingestion role (DOC=<id> or all)
+	PROCURELAKE_GIT_SHA=$$(git rev-parse --short HEAD) $(AI_CLI) --role-arn $$($(TFOUT) -raw ingestion_role_arn) land \
+	  --raw-bucket $(call BUCKET,raw) --artifacts-bucket $(call BUCKET,artifacts) $(if $(DOC),--document-id $(DOC),--all)
+
+.PHONY: ai-init-silver
+ai-init-silver: ## Create the empty silver_contract_intelligence Iceberg table (once, before dbt reads it)
+	$(AI_CLI) $(AI_ROLE) init-silver $(AI_SILVER)
+
+.PHONY: ai-extract
+ai-extract: ## Textract + Bedrock (Claude Haiku 5.5, Canada profile) extraction into the review queue (DOC=<id> or all). Billed per call
+	$(AI_CLI) $(AI_ROLE) extract --raw-bucket $(call BUCKET,raw) --artifacts-bucket $(call BUCKET,artifacts) $(AI_REVIEW) \
+	  $(if $(DOC),--document-id $(DOC),--all)
+
+.PHONY: ai-review
+ai-review: ## List review items (STATUS=pending_review|approved|rejected), or show one (DOC=<id> EXTRACTION=<id>)
+	$(AI_CLI) $(AI_ROLE) review $(AI_REVIEW) --artifacts-bucket $(call BUCKET,artifacts) \
+	  $(if $(EXTRACTION),show --document-id $(DOC) --extraction-id $(EXTRACTION),list $(if $(STATUS),--status $(STATUS)))
+
+.PHONY: ai-decide
+ai-decide: ## Decide a review: DOC= EXTRACTION= REVIEWER="Name" OUTCOME=approved|rejected [ARGS='--accept-passed --decision field=JSON']; writes Silver
+	@test -n "$(DOC)" -a -n "$(EXTRACTION)" -a -n "$(REVIEWER)" -a -n "$(OUTCOME)" || { echo 'Usage: make ai-decide DOC=... EXTRACTION=... REVIEWER="..." OUTCOME=approved|rejected [ARGS=...]'; exit 1; }
+	$(AI_CLI) $(AI_ROLE) review $(AI_REVIEW) decide --document-id $(DOC) --extraction-id $(EXTRACTION) \
+	  --reviewer "$(REVIEWER)" --outcome $(OUTCOME) $(AI_SILVER) $(ARGS)
+
+.PHONY: ai-publish
+ai-publish: ## Re-write every decided review to Silver (idempotent MERGE)
+	$(AI_CLI) $(AI_ROLE) publish $(AI_REVIEW) $(AI_SILVER)
+
+.PHONY: ai-evaluate
+ai-evaluate: ## Score the latest extractions against configs/ai/evaluation/ground_truth.yaml; evidence in build/evidence/
+	$(AI_CLI) $(AI_ROLE) evaluate $(AI_REVIEW)

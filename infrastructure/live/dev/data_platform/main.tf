@@ -524,3 +524,171 @@ resource "aws_sfn_state_machine" "cdc_processing" {
   })
   depends_on = [aws_iam_role_policy.cdc_processing]
 }
+
+# ----------------------------------------------------------------------------- AI contract extraction
+# Week 9, ADR 0032. The review queue and the role that runs extraction (src/procurelake/ai):
+# Textract for scanned pages, Bedrock Claude Haiku 5.5 through the Canada inference profile only,
+# the documents prefixes in Bronze (read), its audit prefix in artifacts, and the one Silver table
+# it writes through Athena. It cannot read tenant data or any other Silver table's files.
+
+# One item per extraction, decided once by a named reviewer (procurelake.ai.review). Persistent,
+# pay-per-request, encrypted with the data key, point-in-time recovery for the audit record.
+resource "aws_dynamodb_table" "ai_review" {
+  name                        = "${local.name_prefix}-ai-review"
+  billing_mode                = "PAY_PER_REQUEST"
+  hash_key                    = "pk"
+  range_key                   = "sk"
+  deletion_protection_enabled = true
+
+  attribute {
+    name = "pk"
+    type = "S"
+  }
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = local.foundation.data_kms_key_arn
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+locals {
+  # Cross-region inference: the profile, plus the model in each Region the profile routes to
+  # (ca-central-1 and ca-west-1, listed by `aws bedrock list-inference-profiles`, 2026-11-11).
+  ai_inference_profile_arn = "arn:aws:bedrock:${var.region}:${var.aws_account_id}:inference-profile/${var.ai_inference_profile_id}"
+  ai_foundation_model_arns = [
+    for r in var.ai_inference_profile_regions : "arn:aws:bedrock:${r}::foundation-model/${var.ai_foundation_model_id}"
+  ]
+  ai_workgroup_arn  = "arn:aws:athena:${var.region}:${var.aws_account_id}:workgroup/${local.foundation.athena_workgroup_name}"
+  ai_silver_table   = "silver_contract_intelligence"
+  ai_silver_prefix  = "silver/contract_intelligence/"
+  ai_documents      = "documents/public_contracts/"
+  ai_manifests      = "pipeline_manifests/public_contracts/"
+  ai_audit          = "audit/ai_extraction/"
+  ai_athena_results = "athena_results/${local.foundation.athena_workgroup_name}/"
+}
+
+resource "aws_iam_role" "ai_extraction" {
+  name        = "${local.name_prefix}-ai-extraction"
+  description = "Contract extraction: Textract, Bedrock (Canada profile), review queue, silver_contract_intelligence."
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowAccountPrincipals"
+      Effect    = "Allow"
+      Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+  max_session_duration = 3600
+}
+
+resource "aws_iam_role_policy" "ai_extraction" {
+  name = "ai-extraction-access"
+  role = aws_iam_role.ai_extraction.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "InvokeClaudeThroughCanadaProfile"
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+        Resource = concat([local.ai_inference_profile_arn], local.ai_foundation_model_arns)
+      },
+      # DetectDocumentText has no resource-level permissions (it takes the page bytes).
+      { Sid = "OcrPages", Effect = "Allow", Action = "textract:DetectDocumentText", Resource = "*" },
+      {
+        Sid       = "ListDocuments"
+        Effect    = "Allow"
+        Action    = "s3:ListBucket"
+        Resource  = local.raw_arn
+        Condition = { StringLike = { "s3:prefix" = ["${local.ai_documents}*"] } }
+      },
+      { Sid = "ReadDocuments", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.raw_arn}/${local.ai_documents}*" },
+      {
+        Sid       = "ListManifestsAndAudit"
+        Effect    = "Allow"
+        Action    = "s3:ListBucket"
+        Resource  = local.art_arn
+        Condition = { StringLike = { "s3:prefix" = ["${local.ai_manifests}*", "${local.ai_audit}*"] } }
+      },
+      { Sid = "ReadManifests", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.art_arn}/${local.ai_manifests}*" },
+      {
+        Sid      = "WriteAudit"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject"]
+        Resource = "${local.art_arn}/${local.ai_audit}*"
+      },
+      {
+        # Athena reads the bucket location and writes query results under the workgroup prefix.
+        Sid      = "LocateBuckets"
+        Effect   = "Allow"
+        Action   = "s3:GetBucketLocation"
+        Resource = [local.art_arn, local.lake_arn]
+      },
+      {
+        Sid      = "AthenaResults"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts"]
+        Resource = "${local.art_arn}/${local.ai_athena_results}*"
+      },
+      {
+        Sid       = "ListSilverTable"
+        Effect    = "Allow"
+        Action    = "s3:ListBucket"
+        Resource  = local.lake_arn
+        Condition = { StringLike = { "s3:prefix" = ["${local.ai_silver_prefix}*"] } }
+      },
+      {
+        Sid      = "ReadWriteSilverTable"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"]
+        Resource = "${local.lake_arn}/${local.ai_silver_prefix}*"
+      },
+      {
+        Sid    = "RunAthenaQueries"
+        Effect = "Allow"
+        Action = [
+          "athena:StartQueryExecution", "athena:StopQueryExecution", "athena:GetQueryExecution",
+          "athena:GetQueryResults", "athena:GetWorkGroup",
+        ]
+        Resource = local.ai_workgroup_arn
+      },
+      {
+        Sid    = "SilverCatalog"
+        Effect = "Allow"
+        Action = ["glue:GetDatabase", "glue:GetTable", "glue:CreateTable", "glue:UpdateTable"]
+        Resource = [
+          "${local.glue_prefix}:catalog",
+          "${local.glue_prefix}:database/${local.silver_db}",
+          "${local.glue_prefix}:table/${local.silver_db}/${local.ai_silver_table}",
+        ]
+      },
+      {
+        Sid      = "ReviewQueue"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"]
+        Resource = aws_dynamodb_table.ai_review.arn
+      },
+      {
+        Sid      = "UsePlatformKey"
+        Effect   = "Allow"
+        Action   = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+        Resource = local.foundation.data_kms_key_arn
+      },
+      {
+        Sid      = "DenyBronzeDeletes"
+        Effect   = "Deny"
+        Action   = ["s3:DeleteObject", "s3:DeleteObjectVersion"]
+        Resource = "${local.raw_arn}/*"
+      },
+    ]
+  })
+}

@@ -24,7 +24,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 15. ~~Locking mechanism~~ **Resolved (owner, 2026-11-10): a per-table lease via a DynamoDB conditional write**, in the same table as the checkpoints. To be implemented with the apply engine (C3).
 16. ~~Where dbt runs~~ **Resolved: ADR 0029** (ECS Fargate task from `jobs/containers/dbt_runner`, started by Step Functions; runs as the data-engineer role).
 17. ~~Networking~~ **Resolved: ADR 0027** (public RDS limited to the operator IP; DMS in private subnets with S3 gateway + Secrets Manager interface endpoints; no NAT).
-18. **Bedrock model choice** and Region availability in `ca-central-1` for that model. Also whether Textract features needed are available in `ca-central-1`.
+18. ~~Bedrock model choice and ca-central-1 availability~~ **Resolved: ADR 0032** (Claude Haiku 5.5 through the Canada inference profile `ca.anthropic.claude-haiku-5-5`; Textract `DetectDocumentText` verified in ca-central-1). Model access for the account was still being granted on 2026-11-11.
 19. **Human review queue:** where it lives and how approvals are recorded.
 20. **BI / dashboard tool** for the tenant and admin dashboards.
 21. **Snapshot retention period** for Iceberg `VACUUM`.

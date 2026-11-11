@@ -1,0 +1,5 @@
+version: 2
+
+models:
+  - name: stg_ai__approved_fields
+    description: Accepted or corrected field values from each document's latest approved extraction.

@@ -176,3 +176,47 @@ run "state_machines_fail_loudly_and_retry_only_idempotent_work" {
     error_message = "A successful dbt build must be followed by the tenant access check (ADR 0030)."
   }
 }
+
+run "ai_extraction_is_limited_to_the_canada_profile_and_its_own_paths" {
+  command = apply
+
+  assert {
+    condition = alltrue([for s in jsondecode(aws_iam_role_policy.ai_extraction.policy).Statement :
+      alltrue([for r in flatten([s.Resource]) : !startswith(r, "arn:aws:bedrock") || length(regexall("^arn:aws:bedrock:ca-(central|west)-1:", r)) > 0])
+    ])
+    error_message = "Bedrock access must be limited to Canadian Regions."
+  }
+  assert {
+    condition = contains(
+      flatten([for s in jsondecode(aws_iam_role_policy.ai_extraction.policy).Statement : s.Resource if s.Sid == "InvokeClaudeThroughCanadaProfile"]),
+      "arn:aws:bedrock:ca-central-1:123456789012:inference-profile/ca.anthropic.claude-haiku-5-5"
+    )
+    error_message = "The role must invoke the model through the Canada inference profile."
+  }
+  assert {
+    condition = alltrue([for s in jsondecode(aws_iam_role_policy.ai_extraction.policy).Statement :
+      alltrue([for r in flatten([s.Resource]) :
+        !startswith(r, "arn:aws:s3:::procurelake-dev-lake-123456789012-ca-central-1/") || r == "arn:aws:s3:::procurelake-dev-lake-123456789012-ca-central-1/silver/contract_intelligence/*"
+      ])
+    ])
+    error_message = "The AI role may touch only its own Silver table's files in the lake."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_iam_role_policy.ai_extraction.policy).Statement :
+    s.Effect == "Deny" && contains(s.Action, "s3:DeleteObject") && s.Resource == "arn:aws:s3:::procurelake-dev-raw-123456789012-ca-central-1/*"])
+    error_message = "The AI role must be denied Bronze deletes."
+  }
+  assert {
+    condition     = aws_dynamodb_table.ai_review.deletion_protection_enabled && aws_dynamodb_table.ai_review.server_side_encryption[0].enabled && aws_dynamodb_table.ai_review.point_in_time_recovery[0].enabled
+    error_message = "The review queue must be protected from deletion, encrypted and recoverable."
+  }
+}
+
+run "ai_profile_must_be_canadian" {
+  command = plan
+
+  variables {
+    ai_inference_profile_id = "global.anthropic.claude-haiku-5-5"
+  }
+  expect_failures = [var.ai_inference_profile_id]
+}

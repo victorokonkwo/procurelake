@@ -37,5 +37,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0029 | Orchestration: Step Functions, EventBridge Scheduler, ECS Fargate dbt runner | Accepted | [0029-orchestration-step-functions.md](0029-orchestration-step-functions.md) |
 | 0030 | Tenant isolation: Lake Formation hybrid mode on Gold; marts merged, never dropped (amends ADR 0026 for marts) | Accepted | [0030-tenant-isolation-lake-formation.md](0030-tenant-isolation-lake-formation.md) |
 | 0031 | Monitoring: CDC metrics, CloudWatch alarms and EventBridge to SNS, silent-stall drill | Accepted | [0031-monitoring-and-alerting.md](0031-monitoring-and-alerting.md) |
+| 0032 | AI contract extraction: Claude Haiku 5.5 in Canada, evidence checks, human review | Accepted (live run blocked on model access) | [0032-ai-contract-extraction.md](0032-ai-contract-extraction.md) |
 
 Update the **ADR file** column as each ADR is written.

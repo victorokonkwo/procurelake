@@ -42,3 +42,13 @@ output "pipeline_alerts_topic_arn" {
   description = "SNS topic for pipeline failure alerts."
   value       = aws_sns_topic.pipeline_alerts.arn
 }
+
+output "ai_extraction_role_arn" {
+  description = "Role for contract extraction and review (make ai-*)."
+  value       = aws_iam_role.ai_extraction.arn
+}
+
+output "ai_review_table_name" {
+  description = "DynamoDB review queue for contract extraction."
+  value       = aws_dynamodb_table.ai_review.name
+}

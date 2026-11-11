@@ -1,0 +1,47 @@
+version: 2
+
+models:
+  - name: mart_ai_contract_intelligence
+    description: >-
+      Approved contract attributes extracted by AI from public US federal contract documents
+      (ADR 0032), one row per document. Every value passed human review and carries the page it
+      was read from; provenance (source URL, PDF hash, USAspending award) and the model, prompt
+      and schema versions are on every row. Public reference data: not tenant data, and not
+      granted to tenant roles. stated_amount is what the document states (see amount_type); it
+      is not spend.
+    meta:
+      grain: one row per document_id (its latest approved extraction)
+      owner: data-platform
+      freshness: "updated when a review is approved; rebuilt by every dbt run"
+    columns:
+      - name: document_id
+        data_tests: [unique, not_null]
+      - name: extraction_id
+        data_tests: [not_null]
+      - name: document_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments: {values: [award, modification, order, other]}
+      - name: usaspending_award_id
+        data_tests: [not_null]
+      - name: source_url
+        data_tests: [not_null]
+      - name: pdf_sha256
+        data_tests: [not_null]
+      - name: reviewer
+        data_tests: [not_null]
+      - name: reviewed_at
+        data_tests: [not_null]
+      - name: model_id
+        data_tests: [not_null]
+      - name: prompt_version
+        data_tests: [not_null]
+      - name: schema_version
+        data_tests: [not_null]
+      - name: currency_code
+        description: ISO 4217 code of stated_amount; present exactly when stated_amount is.
+      - name: amount_type
+        data_tests:
+          - accepted_values:
+              arguments: {values: [total_contract_value, obligated_amount, modification_change, other]}

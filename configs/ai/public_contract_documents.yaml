@@ -1,0 +1,86 @@
+# Public contract documents for AI extraction (implementation plan F, ADR 0032).
+#
+# Real US federal contract documents, posted publicly on agency sites. US government works are
+# public domain (17 U.S.C. 105). They are a public reference dataset, kept apart from the
+# synthetic tenant data: they are never tenant documents and never land in
+# procurement.contract_documents.
+#
+# Each entry is linked to the USAspending award it belongs to (generated_internal_id), whose
+# record is fetched and stored in Bronze next to the PDF at ingestion. Entries were found and
+# checked on 2026-11-11: each PDF downloaded, and each award found on USAspending.
+# landing_page is null where only the direct file URL is known.
+catalog_version: 1
+license_basis: "US federal government work, public domain (17 U.S.C. 105)"
+documents:
+  - document_id: doe-bnl-desc0012704-mod0002
+    url: https://www.bnl.gov/about/contract/docs/mod/0002_sf-30.pdf
+    landing_page: https://www.bnl.gov/about/contract/mods.php
+    usaspending_award_id: CONT_AWD_DESC0012704_8900_-NONE-_-NONE-
+    form: SF-30 modification
+    notes: Posted on the DOE laboratory site run by the M&O contractor.
+  - document_id: doe-bnl-desc0012704-mod0012
+    url: https://www.bnl.gov/about/contract/docs/mod/0012_sf-30.pdf
+    landing_page: https://www.bnl.gov/about/contract/mods.php
+    usaspending_award_id: CONT_AWD_DESC0012704_8900_-NONE-_-NONE-
+    form: SF-30 modification
+    notes: Image-only scan, 61 pages with attachments.
+  - document_id: doe-snl-dena0003525-mod0147
+    url: https://www.energy.gov/sites/default/files/2022-07/SNL%200147%20%2805_10_2022%29.pdf
+    landing_page: null
+    usaspending_award_id: CONT_AWD_DENA0003525_8900_-NONE-_-NONE-
+    form: SF-30 modification
+    notes: Page 1 is an image-only scan; the other pages have a text layer.
+  - document_id: nasa-msfc-80msfc20c0034-p00008
+    url: https://www.nasa.gov/wp-content/uploads/2023/01/80MSFC20C0034-P00008_Redacted_TAGGED.pdf
+    landing_page: null
+    usaspending_award_id: CONT_AWD_80MSFC20C0034_8000_-NONE-_-NONE-
+    form: SF-30 modification
+    notes: Line-item prices redacted under FOIA exemption (b)(4).
+  - document_id: nasa-arc-nna09dc26c-contract
+    url: https://www.nasa.gov/wp-content/uploads/2013/06/463765main-contract-nna09dc26c.pdf
+    landing_page: https://www.nasa.gov/foia/nasa-e-libraries/ames-foia-library/nna09dc26c-contract-and-modifications/
+    usaspending_award_id: CONT_AWD_NNA09DC26C_8000_-NONE-_-NONE-
+    form: Contract sections B-J (no standard form cover)
+    notes: null
+  - document_id: nasa-arc-nna09dc26c-mod01
+    url: https://www.nasa.gov/wp-content/uploads/2013/06/463766main-n232-modification-01.pdf
+    landing_page: https://www.nasa.gov/foia/nasa-e-libraries/ames-foia-library/nna09dc26c-contract-and-modifications/
+    usaspending_award_id: CONT_AWD_NNA09DC26C_8000_-NONE-_-NONE-
+    form: SF-30 modification
+    notes: Image-only scan.
+  - document_id: nasa-arc-nna04ca71c-contract
+    url: https://www.nasa.gov/wp-content/uploads/2013/06/408940main-nna04ca71c-contract.pdf
+    landing_page: https://www.nasa.gov/foia/nasa-e-libraries/ames-foia-library/solution-quest-contract/
+    usaspending_award_id: CONT_AWD_NNA04CA71C_8000_-NONE-_-NONE-
+    form: NASA Form 1686 award
+    notes: Scan with a text layer; obligated amount redacted under (b)(4).
+  - document_id: nasa-arc-nna08bc42c-contract
+    url: https://www.nasa.gov/wp-content/uploads/2016/08/486475main-nna08bc42c.pdf
+    landing_page: https://www.nasa.gov/foia/nasa-e-libraries/ames-foia-library/
+    usaspending_award_id: CONT_AWD_NNA08BC42C_8000_-NONE-_-NONE-
+    form: SF-26 award
+    notes: Faxed scan with a noisy text layer.
+  - document_id: nasa-arc-nna06aa01c-mod5
+    url: https://www.nasa.gov/wp-content/uploads/2013/06/300847main-mod-51.pdf
+    landing_page: https://www.nasa.gov/foia/nasa-e-libraries/ames-foia-library/nna06aa01c/
+    usaspending_award_id: CONT_AWD_NNA06AA01C_8000_-NONE-_-NONE-
+    form: SF-30 modification
+    notes: Scan with a text layer, one page.
+  - document_id: dhs-uscis-70sbur19f00000565-order
+    url: https://uscis.gov/sites/default/files/document/contracts/GS00Q17GWD2110.pdf
+    landing_page: null
+    usaspending_award_id: CONT_AWD_70SBUR19F00000565_7003_GS00Q17GWD2110_4732
+    form: SF-1449 task order
+    notes: File named after the parent GSA vehicle GS00Q17GWD2110; line-item prices redacted.
+  - document_id: dhs-uscis-hssccg16j00091-order
+    url: https://www.uscis.gov/sites/default/files/document/contracts/HSSCCG-16-J-00091.pdf
+    landing_page: null
+    usaspending_award_id: CONT_AWD_HSSCCG16J00091_7003_HSHQDC14DE2005_7001
+    form: OF-347 order
+    notes: The order number is also used by an unrelated USAspending award; match on the parent too.
+  - document_id: dhs-uscis-70sbur18c00000017-contract
+    url: https://www.uscis.gov/sites/default/files/document/contracts/70SBUR18C00000017.pdf
+    landing_page: null
+    usaspending_award_id: CONT_AWD_70SBUR18C00000017_7003_-NONE-_-NONE-
+    form: SF-26 award
+    notes: All prices redacted.
