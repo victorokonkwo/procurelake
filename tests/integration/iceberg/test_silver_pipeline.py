@@ -7,7 +7,9 @@ rows keeping their previous version, stale batches refused, and the reject-ratio
 
 from __future__ import annotations
 
+import itertools
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import psycopg
@@ -47,8 +49,17 @@ def env(scratch_db_factory, dataset, tmp_path, spark):
     namespace = f"lake.it_{tmp_path.name.replace('-', '_')[-20:]}"
     spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {namespace}")
 
+    # Batch ids have one-second resolution (`YYYYMMDDTHHMMSSZ-<random>`) and order the batches.
+    # Snapshots taken in the same second would order by their random suffix, so each snapshot
+    # here is one second after the previous one (CI, 2026-11-11: two snapshots landed in the
+    # same second and the "newer" one was refused as stale).
+    taken = itertools.count()
+    start = datetime.now(UTC)
+
     def snapshot():
-        return {m.dataset: m for m in PostgresSnapshotConnector(dsn, raw, art, CONTRACTS).snapshot()}
+        when = start + timedelta(seconds=next(taken))
+        connector = PostgresSnapshotConnector(dsn, raw, art, CONTRACTS, clock=lambda: when)
+        return {m.dataset: m for m in connector.snapshot()}
 
     return {
         "dsn": dsn,
