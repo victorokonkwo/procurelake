@@ -1,0 +1,293 @@
+# Ground-truth labels for the contract extraction evaluation (ADR 0032). Drafted by reading each
+# PDF page by page (pdftotext text layer; scanned or image-only pages rendered with pdftoppm and
+# read as images), recording only what the document itself prints, under the rules of
+# prompts/contract_extraction_v1.md. Not yet checked by a human: see checked_by.
+labels_version: 1
+labelled_by: "Claude (AI assistant), drafted from the PDFs"
+labelled_on: 2026-11-11
+checked_by: null
+checked_on: null
+method: "Read each document's pages (text layer, or the rendered page image for scans) and recorded what is printed, under the rules of prompts/contract_extraction_v1.md; nothing was filled from USAspending or general knowledge."
+documents:
+  doe-bnl-desc0012704-mod0002:
+    document_type: modification
+    fields:
+      contract_id: {value: "DE-SC0012704", page: 1}
+      supplier: {value: "BROOKHAVEN SCIENCE ASSOCIATES, LLC", page: 1}
+      issuing_agency:
+        value: "U.S. Department of Energy"
+        page: 1
+        accept: ["Brookhaven Site Office", "U.S. Department of Energy Brookhaven Site Office"]
+      effective_date:
+        value: "2015-01-15"
+        page: 1
+        note: "Block 3 reads 'See Block 16C'; block 16C (contracting officer date signed) prints 01/15/2015."
+      performance_start_date:
+        value: "2015-01-05"
+        page: 2
+        note: "Continuation sheet: 'Period of Performance: 01/05/2015 to 01/04/2020'."
+      performance_end_date: {value: "2020-01-04", page: 2}
+      contract_category:
+        value: "M&O contract for BNL"
+        page: 2
+        note: "No PSC or NAICS printed; item 00001 description."
+      contract_amount:
+        value: "321422167.89"
+        page: 1
+        accept: ["356422167.89"]
+        note: "amount_type: modification_change; currency USD. 'Net Increase' and 'Total Amount for this Modification: $321,422,167.89'. The document also prints the new total 'from $35,000,000.00 to $356,422,167.89' (item 00001 total, page 2), accepted as an alternative because the prompt's 'most specific total' rule does not decide between the two; reviewer to confirm."
+  doe-bnl-desc0012704-mod0012:
+    document_type: modification
+    fields:
+      contract_id: {value: "DE-SC0012704", page: 1}
+      supplier: {value: "Brookhaven Science Associates, LLC", page: 1}
+      issuing_agency:
+        value: "U.S. Department of Energy"
+        page: 1
+        accept: ["Brookhaven Site Office", "U.S. Department of Energy Brookhaven Site Office"]
+      effective_date:
+        value: "2015-05-11"
+        page: 1
+        note: "Page 1 is image-only. Block 3 reads 'See Block 16C'; 16C is handwritten '5/11/15'."
+      performance_start_date: {value: null, note: "No period of performance printed on the SF-30 or its continuation pages 2-3; attachments (pages 4-61, image-only) not read in full."}
+      performance_end_date: {value: null, note: "Not printed on pages 1-3."}
+      contract_category: {value: null, note: "No PSC, NAICS or supplies/services description; block 14 only describes the clause revisions."}
+      contract_amount:
+        value: "694194898.14"
+        page: 2
+        note: "amount_type: obligated_amount; currency USD. Revised clause I.152: 'The amount presently obligated by the Government with respect to this Contract is $694,194,898.14.' The $295,311,077.94 increase printed alongside is attributed to Modifications 0005 through 0011, not to this modification, so it is not this document's change."
+  doe-snl-dena0003525-mod0147:
+    document_type: modification
+    fields:
+      contract_id: {value: "DE-NA0003525", page: 1}
+      supplier: {value: "National Technology & Engineering Solutions of Sandia, LLC", page: 1}
+      issuing_agency:
+        value: "NNSA M&O Contracting Branch"
+        page: 1
+        accept: ["NNSA", "NNSA M&O Contracting Branch NA-APM-131"]
+      effective_date:
+        value: "2022-05-10"
+        page: 1
+        note: "Page 1 is image-only. Block 3 reads 'See Block 16C'; the contracting officer's digital-signature stamp in 16C prints '2022.05.10' with the time partly redacted. Legible, but read from a signature stamp: reviewer to confirm."
+      performance_start_date:
+        value: "2017-01-18"
+        page: 1
+        note: "Block 14: 'Period of Performance: 01/18/2017 to 04/30/2027'."
+      performance_end_date: {value: "2027-04-30", page: 1}
+      contract_category:
+        value: "Management and Operation of SNL"
+        page: 2
+        note: "No PSC or NAICS printed; CLIN 0001 description in item 1 of the continuation."
+      contract_amount: {value: null, note: "No contract total, obligation or modification change printed. The FY2020/FY2021 figures on page 2 are DOE/NNSA budget amounts, not contract amounts."}
+  nasa-msfc-80msfc20c0034-p00008:
+    document_type: modification
+    fields:
+      contract_id: {value: "80MSFC20C0034", page: 1}
+      supplier:
+        value: "SPACEX"
+        page: 1
+        accept: ["Space Exploration Technologies"]
+        note: "Block 8 prints 'SPACEX'; the contractor's signature DN on page 1 prints 'Space Exploration Technologies Corp.'."
+      issuing_agency:
+        value: "NASA Marshall Space Flight Center Office of Procurement"
+        page: 1
+        accept: ["NASA", "Marshall Space Flight Center", "NASA Marshall Space Flight Center"]
+      effective_date:
+        value: "2021-02-22"
+        page: 1
+        note: "Block 3 reads 'See Block 16C.'; 16C prints 02/22/2021."
+      performance_start_date: {value: null, note: "Period of performance is printed as 'from ATP through 04/30/2021' (page 7); the start is 'ATP', not a date."}
+      performance_end_date:
+        value: "2021-04-30"
+        page: 7
+        note: "MSFC 52.211-94: 'The period of performance for this contract is from ATP through 04/30/2021.' Also stated on page 2 (no-cost extension)."
+      contract_category: {value: null, note: "No PSC or NAICS printed and no single description of the contract; only per-CLIN descriptions (e.g. 'Base: 2024 HLS Design and Development'). Treated as ambiguous; reviewer to confirm."}
+      contract_amount:
+        value: "139610918.24"
+        page: 4
+        note: "amount_type: total_contract_value; currency USD. Page 4 (image-only) 'The total firm fixed price of this contract is $139,610,918.24'; same figure on page 5 ('Total Value of Base and All Exercised Options') and page 8 (amount presently available). The modification itself is no-cost (no change amount printed). The $250,000,000 maximum NTE value (page 4) is a ceiling, not the total."
+  nasa-arc-nna09dc26c-contract:
+    document_type: award
+    fields:
+      contract_id: {value: "NNA09DC26C", page: 1}
+      supplier: {value: null, note: "No contractor block (sections B-J only, no cover form). 'Swinerton Builders' appears only in the titles of attachments J-5/J-6 (page 42); naming it as the contractor would be inference. Reviewer to decide."}
+      issuing_agency: {value: null, note: "No issued-by block or letterhead. NASA Ames Research Center appears only as the designated billing office (page 15) and installation ombudsman (page 38). Reviewer to decide."}
+      effective_date: {value: null, note: "No effective date printed."}
+      performance_start_date: {value: null, note: "Only a duration is printed: completion 390 calendar days after notice to proceed (B.1(c) page 7, F.2 page 13)."}
+      performance_end_date: {value: null, note: "Only a duration is printed."}
+      contract_category:
+        value: "Collaborative Support Facility, Building N232"
+        page: 4
+        accept: ["construct the Collaborative Support Facility, Building N232", "236220"]
+        note: "Item 01: 'All work identified in the specification and drawings to construct the Collaborative Support Facility, Building N232'. NAICS 236220 is printed only as the SDB subcontracting-target subsector (H.6, page 21), so it is accepted but not the primary value."
+      contract_amount:
+        value: "20002000.00"
+        page: 7
+        note: "amount_type: total_contract_value; currency USD. B.2: 'The total firm fixed price of this contract is $20,002,000.00 (Base Item 0001 and Option Items 0002, 0004, and 0006).' Line-item prices are blank."
+  nasa-arc-nna09dc26c-mod01:
+    document_type: modification
+    fields:
+      contract_id: {value: "NNA09DC26C", page: 1}
+      supplier: {value: "SWINERTON BUILDERS", page: 1}
+      issuing_agency:
+        value: "NASA/Ames Research Center Acquisition Division"
+        page: 1
+        accept: ["NASA Ames Research Center", "NASA"]
+      effective_date:
+        value: "2009-09-22"
+        page: 1
+        note: "Image-only scan. Block 3 reads 'See Block 16C'; 16C is handwritten 09/22/2009."
+      performance_start_date: {value: null, note: "Not printed ('The contract completion date remains unchanged')."}
+      performance_end_date: {value: null, note: "Not printed."}
+      contract_category:
+        value: "COLLABORATIVE SUPPORT FACILITY, BUILDING N232"
+        page: 1
+        accept: ["COLLABORATIVE SUPPORT FACILITY, BUILDING N232 AT NASA AMES RESEARCH CENTER, MOFFETT FIELD, CALIFORNIA"]
+        note: "No PSC or NAICS printed; block 14 subject line."
+      contract_amount:
+        value: "588.00"
+        page: 1
+        note: "amount_type: modification_change; currency USD. 'Net Increase: $588.00' (page 1); page 2: contract value increased $588.00 from $20,002,000.00 to $20,002,588.00."
+  nasa-arc-nna04ca71c-contract:
+    document_type: award
+    fields:
+      contract_id: {value: "NNA04CA71C", page: 1}
+      supplier:
+        value: "SolutionQuest, Limited dba SolutionQuest"
+        page: 1
+        accept: ["SolutionQuest"]
+      issuing_agency:
+        value: "NASA Ames Research Center Acquisition Branch for Center of Operations"
+        page: 1
+        accept: ["NASA Ames Research Center", "NASA"]
+      effective_date: {value: "2004-02-01", page: 1, note: "Block 6 'EFFECTIVE DATE 2/1/04'."}
+      performance_start_date:
+        value: "2004-02-01"
+        page: 9
+        note: "KTR.7-3: base period 'from February 1, 2004 through January 30,2005'. Option periods (to January 30, 2009) are also printed but are not exercised in this document; the funded period in KTR.2 (page 4) is 01 February 2004 through 01 April 2004."
+      performance_end_date: {value: "2005-01-30", page: 9, note: "End of the base period; see the start-date note."}
+      contract_category:
+        value: "Adminstrative Support Services for the NASA Ames Conference Center"
+        page: 1
+        accept: ["Administrative Support Services for the NASA Ames Conference Center"]
+        note: "Block 16, misspelling as printed. No PSC or NAICS printed."
+      contract_amount: {value: null, note: "Redacted (b)(4): total amount of contract (page 1), estimated cost and fixed fee (KTR.1) and amounts allotted (KTR.2, page 4) are all blacked out."}
+  nasa-arc-nna08bc42c-contract:
+    document_type: award
+    fields:
+      contract_id: {value: "NNA08BC42C", page: 1}
+      supplier: {value: "MICROSAT SYSTEMS INC", page: 1}
+      issuing_agency:
+        value: "NASA/Ames Research Center Acquisition Division"
+        page: 1
+        accept: ["NASA Ames Research Center", "NASA"]
+      effective_date:
+        value: "2008-09-23"
+        page: 1
+        note: "Block 3 reads 'See Block 20C'; on the signed faxed copy (page 1) 20C is handwritten 9/23/08. The unsigned clean copy on page 2 has 20C blank."
+      performance_start_date: {value: null, note: "Only durations printed (F.2, page 5: base period 5.5 months, option 4 months)."}
+      performance_end_date: {value: null, note: "Only durations printed."}
+      contract_category:
+        value: "reference design for a LEO modular, Multi-Mission Space Vehicle and associated services"
+        page: 3
+        note: "C.1 statement of work description. No PSC or NAICS printed."
+      contract_amount:
+        value: "699952.00"
+        page: 1
+        note: "amount_type: total_contract_value; currency USD. Block 15G 'TOTAL AMOUNT OF CONTRACT $699,952.00' (also the block 14 obligation and B.1 base firm fixed price). The $2,699,949.00 including the unexercised Phase II option (page 3) is a potential value, not the total."
+  nasa-arc-nna06aa01c-mod5:
+    document_type: modification
+    fields:
+      contract_id: {value: "NNA06AA01C", page: 1}
+      supplier: {value: "Consolidated Safety Services, Inc.", page: 1}
+      issuing_agency:
+        value: "NASA Ames Research Center Acquisition Division"
+        page: 1
+        accept: ["NASA Ames Research Center", "NASA"]
+      effective_date:
+        value: "2006-08-07"
+        page: 1
+        note: "Block 3 reads 'See Block 16C'; 16C prints 08/07/06."
+      performance_start_date: {value: null, note: "Not printed."}
+      performance_end_date: {value: null, note: "Not printed."}
+      contract_category: {value: null, note: "No PSC, NAICS or supplies/services description; administrative correction of modification numbering only."}
+      contract_amount: {value: null, note: "No amount printed (administrative modification; block 12 N/A)."}
+  dhs-uscis-70sbur19f00000565-order:
+    document_type: order
+    fields:
+      contract_id:
+        value: "70SBUR19F00000565"
+        page: 1
+        note: "Block 4 order number. The parent 8(a) STARS II GWAC contract GS00Q17GWD2110 (block 2) is not the label."
+      supplier: {value: "VSOLVIT LLC", page: 1}
+      issuing_agency:
+        value: "USCIS Contracting Office"
+        page: 1
+        accept: ["Department of Homeland Security", "USCIS Contracting Office Department of Homeland Security"]
+      effective_date:
+        value: "2019-09-27"
+        page: 1
+        note: "Block 3 'AWARD/EFFECTIVE DATE' handwritten 09/27/19."
+      performance_start_date:
+        value: "2019-09-27"
+        page: 2
+        note: "'Period of Performance: 09/27/2019 to 09/26/2022' (includes option periods; base period 09/27/2019 - 03/26/2020)."
+      performance_end_date: {value: "2022-09-26", page: 2}
+      contract_category:
+        value: "541512"
+        page: 1
+        accept: ["Forms Support and Services", "Forms Support and Services (FSS)"]
+        note: "NAICS printed in block 10; description from block 20."
+      contract_amount: {value: null, note: "Redacted: block 26 total award amount and the 'total amount of award' on page 7 are blacked out."}
+  dhs-uscis-hssccg16j00091-order:
+    document_type: order
+    fields:
+      contract_id:
+        value: "HSSCCG-16-J-00091"
+        page: 1
+        note: "Block 3 order number. The parent contract HSHQDC-14-D-E2005 (block 2) is not the label."
+      supplier: {value: "ACCENTURE FEDERAL SERVICES LLC", page: 1}
+      issuing_agency:
+        value: "USCIS Contracting Office"
+        page: 1
+        accept: ["Department of Homeland Security", "USCIS Contracting Office Department of Homeland Security"]
+      effective_date:
+        value: "2016-09-23"
+        page: 1
+        note: "No block labelled effective date; OF-347 block 1 'DATE OF ORDER 09/23/2016' (also the date beside the contracting officer's signature). Reviewer to confirm whether the order date counts as the effective date."
+      performance_start_date:
+        value: "2016-09-29"
+        page: 2
+        note: "'Period of Performance: 09/29/2016 to 03/28/2017' (base period)."
+      performance_end_date: {value: "2017-03-28", page: 2}
+      contract_category:
+        value: "End User Experience Design (eUXD)"
+        page: 1
+        note: "No PSC or NAICS printed."
+      contract_amount:
+        value: "1448119.98"
+        page: 1
+        note: "amount_type: obligated_amount; currency USD. Block 17(i) grand total $1,448,119.98; page 2: 'The obligation for this award is shown in box 17(i).' The total amount of award and line-item amounts are redacted."
+  dhs-uscis-70sbur18c00000017-contract:
+    document_type: award
+    fields:
+      contract_id: {value: "70SBUR18C00000017", page: 1}
+      supplier: {value: "VERTICAL APPLICATIONS INC", page: 1}
+      issuing_agency:
+        value: "USCIS Contracting Office"
+        page: 1
+        accept: ["Department of Homeland Security", "USCIS Contracting Office Department of Homeland Security"]
+      effective_date:
+        value: "2018-09-26"
+        page: 1
+        note: "Block 3 reads 'See Block 20C'; 20C is handwritten '26SEP2018'. (19C, the contractor's date, is 9/25/2018.)"
+      performance_start_date:
+        value: "2018-09-26"
+        page: 2
+        note: "'Period of Performance: 09/26/2018 to 09/25/2019'."
+      performance_end_date: {value: "2019-09-25", page: 2}
+      contract_category:
+        value: "Data Strategy Development Support Services"
+        page: 2
+        note: "No PSC or NAICS printed."
+      contract_amount: {value: null, note: "Redacted: block 15G total amount of contract and the 'total amount of award' on page 2 are blacked out."}
