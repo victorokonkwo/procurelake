@@ -68,6 +68,14 @@ The owner decided on 2026-11-11:
 7. **One pipeline at a time:** concurrency group `deploy-dev`, never cancelled mid-apply, on
    top of the S3 state locks.
 
+8. **The OIDC subject is GitHub's immutable form.** It is
+   `repo:victorokonkwo@42738051/procurelake@1452285010:…` (owner and repository IDs), as
+   reported by `gh api repos/<owner>/<name>/actions/oidc/customization/sub`. The first PR plan
+   failed `AssumeRoleWithWebIdentity` because both role trusts expected
+   `repo:victorokonkwo/procurelake:…`. The prefix is now bootstrap variable
+   `github_oidc_subject_prefix`. It is stricter than the name form, because a renamed or
+   re-created repository with the same name does not match.
+
 ## Consequences
 - **Upstream changes stop the apply.** If an earlier root's apply changes what a later root
   plans (for example, new foundation outputs), the fingerprint check stops before that root,

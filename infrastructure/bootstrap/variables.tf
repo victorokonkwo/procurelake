@@ -36,6 +36,22 @@ variable "github_repository" {
   }
 }
 
+variable "github_oidc_subject_prefix" {
+  description = <<-EOT
+    Prefix of the OIDC `sub` claim GitHub issues for this repository, as reported by
+    `gh api repos/<owner>/<name>/actions/oidc/customization/sub` (sub_claim_prefix). This
+    repository uses GitHub's immutable subject, `repo:<owner>@<owner id>/<name>@<repo id>`,
+    which still matches after a rename (checked 2026-11-11, ADR 0035).
+  EOT
+  type        = string
+  default     = "repo:victorokonkwo@42738051/procurelake@1452285010"
+
+  validation {
+    condition     = can(regex("^repo:[A-Za-z0-9_.-]+(@[0-9]+)?/[A-Za-z0-9_.-]+(@[0-9]+)?$", var.github_oidc_subject_prefix))
+    error_message = "github_oidc_subject_prefix must look like repo:owner/name or repo:owner@id/name@id."
+  }
+}
+
 variable "github_integration_branch" {
   description = "Branch whose pushes may run terraform plan via the plan role."
   type        = string

@@ -7,3 +7,5 @@ budget_alert_emails = ["you@example.com"]
 # monthly_budget_usd        = 50
 # github_repository         = "victorokonkwo/procurelake"
 # github_integration_branch = "dev"
+# OIDC sub prefix (immutable subject): gh api repos/<owner>/<name>/actions/oidc/customization/sub
+# github_oidc_subject_prefix = "repo:victorokonkwo@42738051/procurelake@1452285010"

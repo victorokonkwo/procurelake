@@ -46,7 +46,7 @@ provider "aws" {
 locals {
   state_bucket_name = "procurelake-tfstate-${var.aws_account_id}-${var.region}"
   github_oidc_host  = "token.actions.githubusercontent.com"
-  repo_subject      = "repo:${var.github_repository}"
+  repo_subject      = var.github_oidc_subject_prefix
 }
 
 # ----------------------------------------------------------------------------- 1. cost budget
