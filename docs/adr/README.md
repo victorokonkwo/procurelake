@@ -40,7 +40,7 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0032 | AI contract extraction: Claude Haiku 5.5 in Canada, evidence checks, human review | Accepted (live run blocked on model access) | [0032-ai-contract-extraction.md](0032-ai-contract-extraction.md) |
 | 0033 | Iceberg maintenance: compaction after each dbt merge, daily OPTIMIZE/VACUUM job with layer retention | Accepted | [0033-iceberg-maintenance.md](0033-iceberg-maintenance.md) |
 | 0034 | Benchmarks in an isolated namespace (`postgres_bench`, bench Silver/Gold); partition evolution in Spark; CDC lineage columns on every Silver table | Accepted (resolves OQ13) | [0034-benchmarks-and-partition-evolution.md](0034-benchmarks-and-partition-evolution.md) |
-| 0035 | CI deploys: plan on pull requests, owner-approved apply on dev, fingerprint-checked (GitHub Actions + OIDC) | Accepted (PR plan verified; first approved apply pending) | [0035-ci-deploys-github-actions.md](0035-ci-deploys-github-actions.md) |
-| 0036 | Scoped CI deploy role: ReadOnlyAccess plus procurelake-dev writes, explicit denies (replaces AdministratorAccess) | Accepted (first CI apply pending) | [0036-scoped-ci-deploy-role.md](0036-scoped-ci-deploy-role.md) |
+| 0035 | CI deploys: plan on pull requests, owner-approved apply on dev, fingerprint-checked (GitHub Actions + OIDC) | Accepted (verified end to end) | [0035-ci-deploys-github-actions.md](0035-ci-deploys-github-actions.md) |
+| 0036 | Scoped CI deploy role: ReadOnlyAccess plus procurelake-dev writes, explicit denies (replaces AdministratorAccess) | Accepted (applied; used by CI) | [0036-scoped-ci-deploy-role.md](0036-scoped-ci-deploy-role.md) |
 
 Update the **ADR file** column as each ADR is written.

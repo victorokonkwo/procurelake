@@ -1,7 +1,7 @@
 # ADR 0035: CI deploys: plan on pull requests, approved apply on dev (GitHub Actions + OIDC)
 
-- **Status:** Accepted. The pull-request plan has run (2026-11-11). The approved apply runs on
-  the first merge that changes infrastructure.
+- **Status:** Accepted. Verified end to end on 2026-11-11: a pull-request plan, then an
+  owner-approved apply (see Consequences).
 - **Date:** 2026-11-11
 - **Implementation:**
   - Workflow: `.github/workflows/deploy-dev.yml`
@@ -97,3 +97,13 @@ The owner decided on 2026-11-11:
   - `lakeformation:ListLakeFormationOptIns`, which the managed `ReadOnlyAccess` policy lacks,
     is now granted to the plan role.
 - **Logs:** in those runs the account ID appeared as `***`, as intended.
+- **First approved apply (PR #4, run 43103629547, 2026-11-11):**
+  - the plan listed one update, `aws_cloudwatch_metric_alarm.cdc_freshness`, and the owner
+    approved the `dev` deployment;
+  - the apply job re-planned with the scoped deploy role (ADR 0036), the fingerprints matched,
+    and it applied that one change; the other three roots had nothing to apply;
+  - CloudTrail records the `PutMetricAlarm` under session `gha-deploy-43103629547`.
+- **The run triggered by the merge itself (43095869157) never started.** It stayed "queued"
+  with no jobs for over an hour, and GitHub refused both cancel and force-cancel. The fresh run
+  above was started with `workflow_dispatch`. If a deploy run sticks like this, dispatch a new
+  one: it still plans and waits for approval.

@@ -1,7 +1,7 @@
 # ADR 0036: Scoped CI deploy role (replaces AdministratorAccess)
 
-- **Status:** Accepted. Applied when the owner applies bootstrap. Verified end to end by the
-  first approved CI apply (see Consequences).
+- **Status:** Accepted. Applied 2026-11-11 (bootstrap), and used by the first approved CI apply
+  the same day.
 - **Date:** 2026-11-11
 - **Implementation:** `infrastructure/bootstrap/main.tf` (`local.deploy_statements`,
   `aws_iam_role_policy.github_deploy_dev`, `ReadOnlyAccess` attachment); test
@@ -60,9 +60,10 @@ exceptions are fixed by AWS or Glue:
   rendered policy, and every one gave the intended decision. Every write the roots perform was
   allowed. The calls that must fail were denied: AdministratorAccess attachment, the CI roles,
   users, other roles, lake objects, the state bucket, the budget, EC2 instances and NAT.
-- **Not verifiable offline:** whether a real apply needs an action this policy misses. The
-  first approved CI apply is the test. A miss fails that apply with `AccessDenied` naming the
-  action, and the fix is a bootstrap change.
+- **First real apply with the scoped role** (CI run 43103629547): it refreshed all four roots
+  and updated one CloudWatch alarm, with no `AccessDenied`. That proves refresh across every
+  root, but writes only for CloudWatch. A write this policy misses in another service will fail
+  its apply with `AccessDenied` naming the action, and the fix is a bootstrap change.
 - **Residual risk:**
   - inline `iam:PutRolePolicy` on a `procurelake-dev-*` role can still grant that role broad
     rights;
