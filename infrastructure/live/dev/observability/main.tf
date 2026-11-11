@@ -82,7 +82,7 @@ resource "aws_cloudwatch_metric_alarm" "state_machine_failed" {
 # Metrics Insights queries aggregate across every Silver table (dimension Table).
 resource "aws_cloudwatch_metric_alarm" "cdc_freshness" {
   alarm_name          = "${local.name}-cdc-source-to-silver-latency"
-  alarm_description   = "A CDC batch reached Silver more than ${var.freshness_threshold_seconds} s after its oldest source commit (C5 gate: 15 min to Gold). Runbook: docs/runbooks/pipeline-alarms.md"
+  alarm_description   = "A CDC batch reached Silver more than ${var.freshness_threshold_seconds} s after its oldest source commit (C5 gate: 15 min to Gold). Runbook: docs/runbooks/pipeline-alarms.md, row cdc-source-to-silver-latency"
   comparison_operator = "GreaterThanThreshold"
   threshold           = var.freshness_threshold_seconds
   evaluation_periods  = 1

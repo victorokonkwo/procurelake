@@ -80,3 +80,37 @@ run "budget_exists_with_requested_limit" {
     error_message = "Budget must be created by the bootstrap stack."
   }
 }
+
+run "deploy_role_is_scoped_not_admin" {
+  command = apply
+
+  assert {
+    condition     = aws_iam_role_policy_attachment.github_deploy_dev_readonly.policy_arn == "arn:aws:iam::aws:policy/ReadOnlyAccess"
+    error_message = "The deploy role reads through ReadOnlyAccess; AdministratorAccess is gone (ADR 0036)."
+  }
+  assert {
+    condition     = length(regexall("AdministratorAccess", aws_iam_role_policy.github_deploy_dev.policy)) == 0
+    error_message = "No statement may grant or attach AdministratorAccess."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_iam_role_policy.github_deploy_dev.policy).Statement :
+    s.Effect == "Deny" && s.Action == "iam:AttachRolePolicy" && length(s.Condition.ArnNotEquals["iam:PolicyARN"]) == 2])
+    error_message = "Only the two DMS service-role policies may be attached."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_iam_role_policy.github_deploy_dev.policy).Statement :
+    s.Effect == "Deny" && s.Action == "iam:*" && s.Resource == "arn:aws:iam::123456789012:role/procurelake-github-*"])
+    error_message = "The deploy role must not be able to change the CI roles."
+  }
+  assert {
+    condition = alltrue(flatten([for s in jsondecode(aws_iam_role_policy.github_deploy_dev.policy).Statement : [
+      for r in flatten([try(s.Resource, [])]) : s.Effect == "Deny" || !startswith(r, "arn:aws:iam::") || strcontains(r, ":role/procurelake-dev-") || strcontains(r, ":role/dms-")
+    ]]))
+    error_message = "IAM writes are limited to procurelake-dev-* roles and the two DMS roles."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_iam_role_policy.github_deploy_dev.policy).Statement :
+    s.Effect == "Deny" && contains(flatten([s.Action]), "s3:GetObject") && contains(flatten([s.Action]), "s3:DeleteObject")])
+    error_message = "The deploy role must never read, write or delete lake data objects."
+  }
+}

@@ -22,6 +22,6 @@ Sprint 1 Day 3 covers the Terraform backend, AWS authentication, KMS, buckets, I
 
 ## Consequences
 - **Bronze immutability is partial.** It relies on versioning plus the IAM delete denial. Account administrators can still delete. S3 Object Lock would be stronger, but it must be enabled when a bucket is created and complicates teardown. Reconsider it before any production use.
-- **The deploy role is over-privileged** until the Week 10 security review replaces `AdministratorAccess` with a scoped policy.
+- **The deploy role was over-privileged** (resolved 2026-11-11 by ADR 0036) until the Week 10 security review replaced `AdministratorAccess` with a scoped policy.
 - **Deployed 2026-11-10** to the dev AWS account (`ca-central-1`), applied by IAM user `victoroko` (temporary `AdministratorAccess`): bootstrap (16 resources), then dev/foundation (34). Afterwards the bootstrap state was migrated into the state bucket. Both stacks then planned **No changes**. Verification: AWS CLI reads of every bucket's versioning, encryption key, public-access block, TLS policy, and lifecycle. Both KMS keys have rotation on. The budget and its four alerts exist. Both workload roles can be assumed. IAM policy simulation (11 allow/deny checks) matched expectations.
 - **Long-lived credentials were used for the first deploy.** Moving human access to IAM Identity Center (SSO) and removing the user's `AdministratorAccess` is a follow-up (open question 29).
