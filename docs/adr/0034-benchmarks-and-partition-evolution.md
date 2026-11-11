@@ -103,8 +103,11 @@ The owner decided on 2026-11-11:
   - Silver took 3,242 s (6,485 DPU-s, about $0.79) after a first attempt hit the 30-minute
     timeout. The bench job now has 120 minutes.
   - Invoices took 35 of those minutes at about 245 rows/s, against about 500 rows/s for awards
-    and purchase orders. Re-parsing JSON per column in validation is the suspect, not yet
-    profiled.
+    and purchase orders.
+  - **Fixed:** Silver validation now reads field presence from one `map<string,string>` parse
+    instead of `get_json_object` per column, and materialises the checked rows once before the
+    valid/rejected split. The same 1M batch then loaded in 180 s instead of 3,242 s (18×;
+    invoices 33 s instead of 35 min), with identical counts and identical Gold answers.
   - Gold took 41.5 s, against 38.9 s at 100k.
   - Pruning held (−91% / −97% bytes), but engine time stayed at 0.6–0.85 s, and every scan
     stayed under Athena's 10 MB billing minimum.
