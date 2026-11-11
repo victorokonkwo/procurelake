@@ -109,5 +109,9 @@ The owner decided on 2026-11-11:
 
   Both now have unit tests. The parser fix is not yet deployed; the deployed job read the
   transform form correctly for the rewrite run.
+- **Limitation found in CI:** evolving a table that started *unpartitioned* broke Iceberg
+  1.10's metadata tables (`Cannot find source column for partition field … identity(1000)`).
+  Every tenant-owned Silver table starts partitioned by `tenant_id`, the path measured on Glue,
+  so the job and its test use that path.
 - **Cost of keeping it:** two empty Glue databases, two idle Glue jobs, and a few megabytes of
   bench Iceberg files. All of it is negligible, and it can be dropped after the benchmarks.

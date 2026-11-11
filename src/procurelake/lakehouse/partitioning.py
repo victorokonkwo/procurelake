@@ -13,6 +13,10 @@ this runs in Spark (Glue 5.1, Iceberg 1.10):
 Layout is measured before and after from the ``files`` metadata table: data files and bytes per
 ``spec_id``, so it shows exactly which files are still in the old layout.
 
+Evolve tables that already have a partition spec (every tenant-owned Silver table is partitioned
+by ``tenant_id``). On a table that started unpartitioned, Iceberg 1.10's metadata tables failed
+after the evolution in CI (``Cannot find source column for partition field … identity(1000)``).
+
 Only the transforms used here are accepted, and identifiers are checked, because the statements
 are built as SQL text.
 """
