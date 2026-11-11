@@ -140,6 +140,9 @@ module "bench_bronze_to_silver" {
   kms_key_arn             = local.foundation.data_kms_key_arn
   data_access_policy_json = local.bench_silver_policy
   log_group_arns          = [for g in aws_cloudwatch_log_group.glue : g.arn]
+  # The 1M snapshot did not finish in the default 30 minutes (2026-11-11: invoices, 515,432
+  # rows, was still running at the timeout). Same 2 x G.1X as dev so runs stay comparable.
+  timeout_minutes = 120
 
   job_arguments = {
     "--datalake-formats" = "iceberg"
