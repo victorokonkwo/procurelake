@@ -112,8 +112,7 @@ and `observability`, in that order. Bootstrap and `dev/cdc` stay manual.
 
 ## Known gaps
 
-- The GitHub `procurelake-github-deploy-dev` role uses `AdministratorAccess`, restricted to the
-  GitHub `dev` environment (owner approval, `dev` branch only) through its trust policy. CI now
-  applies with it (ADR 0035). It will be replaced with a scoped policy in the
-  Week 10 security review (`docs/open-questions.md`).
+- The GitHub `procurelake-github-deploy-dev` role is scoped (ADR 0036): `ReadOnlyAccess` plus writes limited to
+  `procurelake-dev` resources. Inline role policies and `lakeformation:*` remain broad; permissions
+  boundaries are a follow-up.
 - There's no Terraform linter or security scanner in the toolchain yet (`docs/open-questions.md` item 5).

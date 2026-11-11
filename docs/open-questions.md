@@ -29,7 +29,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 20. **BI / dashboard tool** for the tenant and admin dashboards.
 21. **Snapshot retention period** for Iceberg `VACUUM`.
 22. ~~Actual S3 bucket names~~ **Resolved: ADR 0019** (`procurelake-<env>-<role>-<account>-<region>`).
-27. **Least-privilege deploy role.** `procurelake-github-deploy-dev` uses `AdministratorAccess` (scoped by trust to the GitHub `dev` environment only). Replace it with a scoped policy in the Week 10 security review.
+27. ~~Least-privilege deploy role~~ **Resolved: ADR 0036** (2026-11-11): `AdministratorAccess` replaced by `ReadOnlyAccess` plus a policy scoped to the `procurelake-dev` resources the four CI roots manage, with explicit denies (managed-policy attachment, identities, the CI roles, lake objects, the state key). Follow-up: permissions boundaries on workload roles.
 28. **S3 Object Lock for Bronze.** Today immutability relies on versioning plus an IAM delete denial. Decide whether to adopt Object Lock, which must be enabled when a bucket is created, before any production use.
 29. **Human AWS access.** Dev was deployed with IAM user `victoroko` (a long-lived access key plus temporary `AdministratorAccess`). Move to IAM Identity Center (SSO), remove the user's `AdministratorAccess`, and rotate or delete the access key.
 30. **Re-collection policy for settled windows.** USAspending records can change after the 10-day settling period. Decide on a periodic re-sweep (for example, the trailing 30 days weekly) and how Silver picks among several batches for the same window (latest succeeded batch, or dedup by `generated_internal_id` plus `Last Modified Date`).
