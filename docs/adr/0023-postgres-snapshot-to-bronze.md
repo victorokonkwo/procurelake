@@ -18,3 +18,9 @@ Week 3 builds Silver from Bronze, and the Week 4 milestone needs tenant Gold mod
 - **First live run (2026-11-10).** Batch `20261110T093202Z-983c92e5` landed 5,702 rows across 8 tables from the seed-42 dataset (fingerprint `350d064e…`). Every table reconciled, every file's SHA-256 and KMS key were verified in S3, and the rows split between `tenant_alder` and `tenant_birch` as expected. WAL LSN `0/416930B8`.
 - **The snapshot was taken from the local Docker database.** The Week 5 RDS source will be loaded from the same deterministic generator, so a snapshot and a later DMS full load of seed 42 are comparable.
 - **Tests:** reconciliation, exact decimals, file splitting, schema drift, the read-only/isolation settings, and consistency under a concurrent write. The consistency test was mutation-checked: under `READ COMMITTED` the concurrent row leaks in and the test fails.
+- **Batch ids have one-second resolution** (`YYYYMMDDTHHMMSSZ-<8 hex>`), and the Silver job orders
+  batches by id. Two snapshots started in the same second would order by their random suffix,
+  so the newer one could be refused as stale. Found in CI on 2026-11-11, after the Silver
+  speed-up let a test take two snapshots in one second. The failure is loud (`StaleBatchError`),
+  never an out-of-order apply. Snapshots are started by hand, so tests space them one second
+  apart rather than change the id format.
