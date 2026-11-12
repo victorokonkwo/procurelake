@@ -67,6 +67,9 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
 # Athena queries in integration tests are built from module constants and values checked by
 # _lit() against strict patterns (tests/integration/aws/test_bronze_queryable.py).
 "tests/integration/**" = ["S101", "S105", "S106", "S311", "S608"]
+# The same for the acceptance tiers (plan §3): Athena and Spark SQL from Terraform outputs,
+# contract identifiers and module constants.
+"tests/{e2e,security,performance}/**" = ["S101", "S105", "S106", "S311", "S608"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "database/postgres/tests"]

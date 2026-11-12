@@ -7,7 +7,7 @@
   - dbt: `dbt/dbt_project.yml` (marts: incremental `merge`), `dbt/macros/delete_vanished_keys.sql`
   - Runner guard: `jobs/containers/dbt_runner/entrypoint.py` (no full refresh)
   - Exports: `orchestration/step_functions/tenant_exports.asl.json`; products bucket policy in `infrastructure/modules/s3_lakehouse`
-  - Live tests: `tests/integration/aws/test_tenant_isolation.py`
+  - Live tests: `tests/security/test_tenant_isolation.py` and `tests/security/test_unauthorized_access.py` (moved from `tests/integration/aws/` by ADR 0041)
 - **Evidence:** `docs/evidence/sprint1-week7-lake-formation-experiment.md`, `docs/evidence/sprint1-week7-tenant-products-live.md`
 
 ## Context

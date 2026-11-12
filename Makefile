@@ -384,9 +384,7 @@ demo: ## End-to-end demo, one step: STEP=show|update|bronze|silver|gold|tenants|
 destroy-dev: ## Tear down cdc, observability, security, data_platform (keeps state, foundation, DynamoDB, ECR, logs; typed confirmation; DRY_RUN=1 plans only). ADR 0038
 	uv run python scripts/aws/destroy_dev.py $(if $(DRY_RUN),--dry-run,)
 
-.PHONY: test-aws
-test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evidence in build/evidence/
-	PROCURELAKE_AWS_TESTS=1 \
+AWS_TEST_ENV = PROCURELAKE_AWS_TESTS=1 \
 	PROCURELAKE_DEV_RAW_BUCKET=$(call BUCKET,raw) \
 	PROCURELAKE_DEV_ARTIFACTS_BUCKET=$(call BUCKET,artifacts) \
 	PROCURELAKE_DEV_DATA_KMS_KEY_ARN=$$($(TFOUT) -raw data_kms_key_arn) \
@@ -401,7 +399,27 @@ test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evide
 	PROCURELAKE_DEV_TENANT_WORKGROUPS="$$(terraform -chdir=infrastructure/live/dev/security output -json tenant_workgroups)" \
 	PROCURELAKE_DEV_ADMIN_ROLE_ARN=$$(terraform -chdir=infrastructure/live/dev/security output -raw admin_role_arn) \
 	PROCURELAKE_DEV_ADMIN_WORKGROUP=$$(terraform -chdir=infrastructure/live/dev/security output -raw admin_workgroup) \
-	uv run pytest -m aws -v --junitxml=build/test-results/aws-integration.xml tests/integration/aws
+	PROCURELAKE_DEV_BENCH_SILVER_DATABASE=$$($(TFOUT) -raw bench_silver_database_name) \
+	PROCURELAKE_DEV_BENCH_GOLD_DATABASE=$$($(TFOUT) -raw bench_gold_database_name)
+
+.PHONY: test-aws
+test-aws: ## Live tests against deployed dev (needs AWS creds): Bronze, Gold traceability, security (acceptance 8, 9), performance (12); evidence in build/evidence/
+	$(AWS_TEST_ENV) uv run pytest -m aws -v --junitxml=build/test-results/aws-integration.xml \
+	  tests/integration/aws tests/security tests/performance
+
+.PHONY: test-acceptance
+test-acceptance: check-env ## Acceptance tests, local tier (plan §3: 1, 4, 5, 6, 7, 10, 11): PostgreSQL + Spark + test doubles (make db-up; Java 17)
+	uv run pytest -v -m "not aws" --junitxml=build/test-results/acceptance-local.xml \
+	  tests/e2e tests/integration/iceberg/test_schema_change.py
+
+.PHONY: test-acceptance-live
+test-acceptance-live: ## Acceptance tests, live tier (plan §3: 2, 3, 8, 9, 12) on deployed dev. 2-3 need dev/cdc up (billed hourly)
+	$(AWS_TEST_ENV) PROCURELAKE_CDC_TESTS=1 \
+	  PROCURELAKE_CDC_HOST=$$($(CDCOUT) -raw source_address) PROCURELAKE_CDC_PORT=$$($(CDCOUT) -raw source_port) \
+	  PROCURELAKE_CDC_DATABASE=$$($(CDCOUT) -raw source_database_name) \
+	  PROCURELAKE_CDC_MASTER_SECRET_ARN=$$($(CDCOUT) -raw master_user_secret_arn) \
+	  uv run pytest -m aws -v --junitxml=build/test-results/acceptance-live.xml \
+	  tests/e2e/test_cdc_to_gold.py tests/security tests/performance
 
 .PHONY: test-unit
 test-unit: ## Unit tests (no services required)
