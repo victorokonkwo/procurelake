@@ -28,4 +28,4 @@ Work package A2 requires a Python ingestion framework with pagination, retries w
 - **First live result.** Window 2026-10-23: 56 pages and 5,542 records landed. The source count matched before and after, all IDs were unique, every page's SHA-256 matched, and every page was SSE-KMS encrypted with the data key. The run took about 27 s.
 - **One premature batch remains in Bronze.** An earlier run for 2026-11-08, made before the settling period existed, landed 0 records and stays as an unsettled batch (immutability). It does not complete that window.
 - **Re-collection of settled windows is still open.** Records whose last-modified date falls in an already-settled window but arrive later would be missed. Downstream deduplication must also cope with several batches for the same window. Both are open question 30.
-- **The Canada Open Data CSV connector** (pinned snapshot ingestion) still needs to be built on this framework.
+- **The Canada Open Data CSV connector** (pinned snapshot ingestion) and a generic CSV connector were built on this framework on 2026-11-12 (ADR 0039).

@@ -94,6 +94,14 @@ resource "aws_iam_role_policy" "ingestion" {
         Resource = [for p in local.ingestion_raw_prefixes : "${local.raw_arn}/${p}*"]
       },
       {
+        # Large CSVs land as multipart uploads (ADR 0039). Aborting a failed upload discards
+        # its parts; it cannot delete or overwrite a completed object.
+        Sid      = "AbortOwnFailedUploads"
+        Effect   = "Allow"
+        Action   = "s3:AbortMultipartUpload"
+        Resource = "${local.raw_arn}/bronze/*"
+      },
+      {
         Sid       = "ListManifests"
         Effect    = "Allow"
         Action    = "s3:ListBucket"

@@ -183,8 +183,26 @@ ingest-usaspending-local: ## Ingest one settled day into ./local_lake (no AWS) (
 	@test -n "$(DATE)" || { echo "Usage: make ingest-usaspending-local DATE=YYYY-MM-DD"; exit 1; }
 	uv run python -m procurelake.ingestion.cli usaspending --date $(DATE) --local-root local_lake
 
+CSV_PIN = $(if $(PATH_CSV),--path $(PATH_CSV),) $(if $(SHA256),--expect-sha256 $(SHA256),)
+
+.PHONY: ingest-canada-contracts
+ingest-canada-contracts: ## Government of Canada contracts over 10,000 CAD (open data CSV, ~655 MB) into dev Bronze as the ingestion role [PATH_CSV=… SHA256=…] (ADR 0039)
+	PROCURELAKE_GIT_SHA=$$(git rev-parse --short HEAD) uv run python -m procurelake.ingestion.cli canada-contracts $(CSV_PIN) \
+	  --raw-bucket $(call BUCKET,raw) --manifest-bucket $(call BUCKET,artifacts) \
+	  --role-arn $$($(TFOUT) -raw ingestion_role_arn)
+
+.PHONY: ingest-canada-contracts-local
+ingest-canada-contracts-local: ## Same into ./local_lake (no AWS) [PATH_CSV=… SHA256=…]
+	uv run python -m procurelake.ingestion.cli canada-contracts $(CSV_PIN) --local-root local_lake
+
+.PHONY: ingest-csv-local
+ingest-csv-local: ## Any CSV as one snapshot batch into ./local_lake: SOURCE=… DATASET=… (URL=… or PATH_CSV=…) [KEYS=a,b SHA256=…]
+	@test -n "$(SOURCE)" -a -n "$(DATASET)" || { echo "Usage: make ingest-csv-local SOURCE=… DATASET=… URL=…|PATH_CSV=… [KEYS=…]"; exit 1; }
+	uv run python -m procurelake.ingestion.cli csv --source-system $(SOURCE) --dataset $(DATASET) \
+	  $(if $(URL),--url $(URL),) $(CSV_PIN) $(if $(KEYS),--key-columns $(KEYS),) --local-root local_lake
+
 TFOUT = terraform -chdir=$(DEV_TF) output
-BUCKET = $$($(TFOUT) -json bucket_names | uv run python -c "import sys,json;print(json.load(sys.stdin)['$(1)'])")
+BUCKET =$$($(TFOUT) -json bucket_names | uv run python -c "import sys,json;print(json.load(sys.stdin)['$(1)'])")
 
 # dbt Gold (ADR 0026): runs as the data-engineer role with temporary credentials.
 DBT_DIRS = --project-dir dbt --profiles-dir dbt
