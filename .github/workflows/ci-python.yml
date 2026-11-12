@@ -30,9 +30,13 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      # dbt Gold project: parse offline (no AWS); placeholder buckets are never contacted.
+      # dbt Gold project: parse, then compile every model and test to SQL, offline (no AWS;
+      # placeholder buckets are never contacted). --no-introspect fails the step if any model
+      # needs a warehouse query to compile. is_incremental() is false without a warehouse, so
+      # incremental models compile their full-build branch; the merge branch runs live (ADR 0026).
       - run: uv sync --locked --group dbt
       - run: make dbt-parse
+      - run: make dbt-compile
 
   test:
     name: test (pytest + PostgreSQL 17)
