@@ -39,8 +39,21 @@ policy.
   second.
 
 Expiry itself was shown earlier the same day, as the data engineer, on `mart_awarded_value`
-(51 → 5 snapshots with a 2-hour age). **Not yet observed:** expiry by the job role. The first
-scheduled run is 2026-11-12 03:30 America/Toronto.
+(51 → 5 snapshots with a 2-hour age).
+
+**Expiry by the job role, observed 2026-11-12.** The first scheduled run (EventBridge Scheduler,
+03:30 America/Toronto; run `jr_0771a0d0…`, SUCCEEDED in 203 s, 406 DPU-seconds) reported every
+table `maintained`:
+
+| Table | Snapshots before → after | Why |
+|---|---|---|
+| `mart_supplier_concentration` | 50 → 5 | Gold: older than 1 day, keep at least 5 |
+| `mart_procurement_cycle_time` | 51 → 5 | same |
+| `mart_actual_spend` | 51 → 5 | same |
+| `mart_awarded_value` | 7 → 5 | same |
+| Silver tables | 5–10 → unchanged | Silver keeps 7 days and at least 10 |
+
+Report: `s3://<artifacts>/iceberg_maintenance/run_date=2026-11-12/jr_0771a0d0….json`.
 
 ## 2. dbt post-hook
 

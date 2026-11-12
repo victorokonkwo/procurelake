@@ -25,7 +25,7 @@ Source: the ProcureLake "Principal Data Engineer Implementation Plan" and "Produ
 | 7 | Multi-tenant data products | Lake Formation policies, tenant roles, Athena workgroups, BI, exports | Two isolated tenant analytics experiences |
 | 8 | Reliability & governance | CloudWatch, alarms, reconciliation, incident simulation, catalog, lineage | Operational dashboard and recovery evidence |
 | 9 | AI procurement intelligence | Document processing, Bedrock extraction, validation, curated AI models | Working document-to-Gold pipeline |
-| 10 | Optimization & release | Load tests, Iceberg maintenance, security checks, CI/CD, cost review, demo | Complete portfolio and interview demo. **In progress:** Iceberg compaction and retention live 2026-11-11 (ADR 0033, `docs/evidence/sprint1-week10-iceberg-maintenance-live.md`): dbt post-hook plus a daily Glue job; the bloated marts went from 47 data + 47 delete files to 1, live rows unchanged, tenant tests 27/27. Snapshot expiry by the scheduled job is still to be observed (first run 2026-11-12). Benchmarks at 100k done 2026-11-11 (ADR 0034, `docs/benchmarks/2026-11-11-bench-100k-1m.md`): isolated bench namespace; load measured (Silver 511 s, Gold 38.9 s); partition evolution in Spark; Athena pruning measured (−91% / −97% bytes on date-filtered queries, no time saved at this volume). 1M run done the same day (1,042,769 rows: Silver 3,242 s with invoices the bottleneck, Gold 41.5 s; pruning ratios held, still no time saved). Silver validation then fixed: the same 1M batch in 180 s instead of 3,242 s (18×), identical results. OQ13 resolved by the owner: `tenant_id`-only Silver, unpartitioned Gold, months() when date-filtered scans pass 10 MB (ADR 0034). CI deploys built 2026-11-11 (ADR 0035): plan on pull requests, owner-approved and fingerprint-checked apply on dev, verified end to end the same day: PR plan, then an owner-approved apply by the scoped deploy role (ADR 0036, replaces AdministratorAccess). Security scanners added the same day (ADR 0037: Checkov, pip-audit, gitleaks in `ci-security`; role trusts, default SGs and the dbt task policy hardened). Remaining for Week 10: the security review document, cost controls and `make destroy-dev`, demo |
+| 10 | Optimization & release | Load tests, Iceberg maintenance, security checks, CI/CD, cost review, demo | Complete portfolio and interview demo. **Done except the recording and the Bedrock step:** Iceberg compaction and retention live 2026-11-11 (ADR 0033, `docs/evidence/sprint1-week10-iceberg-maintenance-live.md`): dbt post-hook plus a daily Glue job; the bloated marts went from 47 data + 47 delete files to 1, live rows unchanged, tenant tests 27/27. Snapshot expiry by the scheduled job observed on its first run, 2026-11-12. Benchmarks at 100k done 2026-11-11 (ADR 0034, `docs/benchmarks/2026-11-11-bench-100k-1m.md`): isolated bench namespace; load measured (Silver 511 s, Gold 38.9 s); partition evolution in Spark; Athena pruning measured (−91% / −97% bytes on date-filtered queries, no time saved at this volume). 1M run done the same day (1,042,769 rows: Silver 3,242 s with invoices the bottleneck, Gold 41.5 s; pruning ratios held, still no time saved). Silver validation then fixed: the same 1M batch in 180 s instead of 3,242 s (18×), identical results. OQ13 resolved by the owner: `tenant_id`-only Silver, unpartitioned Gold, months() when date-filtered scans pass 10 MB (ADR 0034). CI deploys built 2026-11-11 (ADR 0035): plan on pull requests, owner-approved and fingerprint-checked apply on dev, verified end to end the same day: PR plan, then an owner-approved apply by the scoped deploy role (ADR 0036, replaces AdministratorAccess). Security scanners added the same day (ADR 0037: Checkov, pip-audit, gitleaks in `ci-security`; role trusts, default SGs and the dbt task policy hardened). Completed 2026-11-12: security review (`docs/security/security-review.md`); cost review ($3.26 to date, `docs/benchmarks/2026-11-12-cost-review.md`); `make destroy-dev` with safeguards (ADR 0038, dry run verified, not executed); Zero-ETL evaluation (ADR 0013: DMS stays); scheduled snapshot expiry observed (marts 50–51 → 5); replay, concurrent tenant access and incremental CDC benchmarks (`docs/benchmarks/2026-11-12-replay-concurrency-cdc.md`): replay identical, isolation held in 48 concurrent queries, 599 and 5,929 CDC changes all correct; the 15-minute gate met at 599 and missed at 5,929 because the run (~7.5 min) outlasts the 5-minute schedule (open question 40). Demo script and `make demo` helper (`docs/runbooks/demo.md`). Remaining: the recording (owner) and the Bedrock step (Week 9 quota) |
 
 ---
 
@@ -238,18 +238,18 @@ The platform isn't complete until all of these pass, with automated integration 
 
 ## 4. Portfolio deliverables (release checklist)
 
-- [ ] Architecture diagram and design decisions
-- [ ] Terraform modules and deployment guide
-- [ ] PostgreSQL schema and synthetic data generator
-- [ ] Ingestion and CDC pipelines
-- [ ] Silver Iceberg and Gold dbt models
-- [ ] Data-quality and reconciliation reports
-- [ ] Lake Formation tenant-isolation tests
-- [ ] CloudWatch operational dashboard
-- [ ] Bedrock document-processing demonstration
-- [ ] Performance and cost benchmark report
-- [ ] Incident recovery runbook
-- [ ] Recorded 5–10 minute end-to-end demo
+- [x] Architecture diagram and design decisions (`docs/architecture/`, ADRs 0001–0038)
+- [x] Terraform modules and deployment guide (`infrastructure/README.md`)
+- [x] PostgreSQL schema and synthetic data generator
+- [x] Ingestion and CDC pipelines
+- [x] Silver Iceberg and Gold dbt models
+- [x] Data-quality and reconciliation reports (dbt tests incl. `assert_*_reconciles_to_silver`; `docs/evidence/`)
+- [x] Lake Formation tenant-isolation tests (`make test-aws`, 27 passed 2026-11-12)
+- [x] CloudWatch operational dashboard (`procurelake-dev-operations`, ADR 0031)
+- [ ] Bedrock document-processing demonstration (**blocked:** Bedrock quota, Week 9)
+- [x] Performance and cost benchmark report (`docs/benchmarks/`)
+- [x] Incident recovery runbook (`docs/runbooks/`, `docs/incidents/`)
+- [ ] Recorded 5–10 minute end-to-end demo (script and helper ready: `docs/runbooks/demo.md`; recording by the owner)
 
 ### End-to-end demo script (one coherent recording)
 1. Show a procurement award in PostgreSQL.
