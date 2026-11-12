@@ -257,6 +257,12 @@ dbt-parse: ## dbt parse (offline; no AWS access)
 	PROCURELAKE_DBT_S3_DATA_DIR=s3://example-bucket/gold/ \
 	uv run --group dbt dbt parse $(DBT_DIRS)
 
+.PHONY: dbt-compile
+dbt-compile: ## dbt compile every model and test to SQL, offline: no warehouse queries (--no-introspect), no AWS access
+	PROCURELAKE_DBT_S3_STAGING_DIR=s3://example-bucket/athena_results/ \
+	PROCURELAKE_DBT_S3_DATA_DIR=s3://example-bucket/gold/ \
+	uv run --group dbt dbt compile $(DBT_DIRS) --no-introspect --no-populate-cache
+
 .PHONY: dbt-build
 dbt-build: ## dbt build (Gold models + tests) on dev Athena as the data-engineer role [DBT_ARGS="--select ..."]
 	PROCURELAKE_DBT_S3_STAGING_DIR=s3://$(call BUCKET,artifacts)/athena_results/ \
