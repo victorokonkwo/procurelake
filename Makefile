@@ -307,6 +307,25 @@ cdc-stall-drill: ## Week 8, live: stop DMS, commit changes, alarm must fire; res
 cdc-down: ## Destroy the dev/cdc stack (asks for confirmation; Bronze data and state are kept)
 	terraform -chdir=$(CDC_TF) destroy -input=true -var enable_dms=true
 
+.PHONY: demo
+demo: ## End-to-end demo, one step: STEP=show|update|bronze|silver|gold|tenants|health [AMOUNT=… AWARD_ID=…] (dev/cdc up; docs/runbooks/demo.md)
+	uv run python scripts/aws/demo.py $(STEP) $(if $(AMOUNT),--amount $(AMOUNT),) $(if $(AWARD_ID),--award-id $(AWARD_ID),) \
+	  --host $$($(CDCOUT) -raw source_address) --port $$($(CDCOUT) -raw source_port) \
+	  --database $$($(CDCOUT) -raw source_database_name) \
+	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
+	  --raw-bucket $(call BUCKET,raw) --cdc-prefix $$($(CDCOUT) -raw bronze_cdc_prefix) \
+	  --glue-job $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw apply_cdc_job_name) \
+	  --engineer-role-arn $$($(TFOUT) -raw data_engineer_role_arn) \
+	  --workgroup $$($(TFOUT) -raw athena_workgroup_name) \
+	  --silver-db $$($(TFOUT) -raw silver_database_name) --gold-db $$($(TFOUT) -raw gold_database_name) \
+	  --tenant-roles "$$($(SECOUT) -json tenant_role_arns)" --tenant-workgroups "$$($(SECOUT) -json tenant_workgroups)" \
+	  --state-machines "{\"cdc_processing\": \"$$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_processing_state_machine_arn)\", \"dbt_transformation\": \"$$(terraform -chdir=infrastructure/live/dev/data_platform output -raw dbt_transformation_state_machine_arn)\"}" \
+	  --dashboard $$(terraform -chdir=infrastructure/live/dev/observability output -raw dashboard_name)
+
+.PHONY: destroy-dev
+destroy-dev: ## Tear down cdc, observability, security, data_platform (keeps state, foundation, DynamoDB, ECR, logs; typed confirmation; DRY_RUN=1 plans only). ADR 0038
+	uv run python scripts/aws/destroy_dev.py $(if $(DRY_RUN),--dry-run,)
+
 .PHONY: test-aws
 test-aws: ## Integration tests against deployed dev AWS (needs AWS creds); evidence in build/evidence/
 	PROCURELAKE_AWS_TESTS=1 \
@@ -417,11 +436,18 @@ bench-dbt-build: ## dbt build of Gold core + marts into the bench Gold database 
 	  --exclude path:models/marts/ai_intelligence path:models/staging/contract_intelligence $(DBT_ARGS)
 
 .PHONY: bench-queries
-bench-queries: ## Run the analytical query benchmark on the bench databases (LABEL=..., REPEATS=5); evidence in build/evidence/
+bench-queries: ## Run the analytical query benchmark on the bench databases (LABEL=..., REPEATS=5, QUERIES=other.yaml); evidence in build/evidence/
 	@test -n "$(LABEL)" || { echo "Usage: make bench-queries LABEL=unpartitioned"; exit 1; }
 	uv run python scripts/aws/with_role.py $$($(TFOUT) -raw data_engineer_role_arn) -- \
 	  uv run python scripts/aws/bench_queries.py run --label $(LABEL) --repeats $(or $(REPEATS),5) \
-	  --silver $(BENCH_SILVER) --gold $(BENCH_GOLD) --workgroup $$($(TFOUT) -raw athena_workgroup_name)
+	  --silver $(BENCH_SILVER) --gold $(BENCH_GOLD) --workgroup $$($(TFOUT) -raw athena_workgroup_name) \
+	  $(if $(QUERIES),--queries $(QUERIES),)
+
+.PHONY: bench-concurrent-tenants
+bench-concurrent-tenants: ## Two tenant sessions on dev Gold, sequential then concurrent (ROUNDS=3); isolation + latency; evidence in build/evidence/
+	uv run python scripts/aws/bench_concurrent_tenants.py --rounds $(or $(ROUNDS),3) \
+	  --roles "$$($(SECOUT) -json tenant_role_arns)" --workgroups "$$($(SECOUT) -json tenant_workgroups)" \
+	  --gold $$($(TFOUT) -raw gold_database_name)
 
 .PHONY: bench-compare
 bench-compare: ## Compare two query benchmark runs (BEFORE=label AFTER=label); fails if any answer differs

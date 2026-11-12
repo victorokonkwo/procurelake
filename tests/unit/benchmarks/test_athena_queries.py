@@ -90,6 +90,15 @@ def test_run_records_every_repeat_and_routes_by_layer():
         assert result["summary"]["engine_ms"]["min"] <= result["summary"]["engine_ms"]["median"]
         assert result["summary"]["scanned_bytes"]["median"] == 1000
     assert {db for _, db in fake.calls} == {"s_db", "g_db"}
+    assert all(r["answer"]["columns"] == ["a", "b"] for r in body["queries"])
+
+
+def test_replay_check_set_loads_and_renders():
+    queries = load_queries(QUERIES.parent / "replay_checks.yaml")
+    assert {q.name for q in queries} >= {"silver_awards_keys", "gold_facts_keys"}
+    for q in queries:
+        sql = render(q, "procurelake_dev_bench_silver", "procurelake_dev_bench_gold")
+        assert "{" not in sql and ("duplicate_rows" in sql or "total" in sql)
 
 
 def test_reused_results_and_changing_answers_are_not_measurements():

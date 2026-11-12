@@ -58,6 +58,9 @@ def render(query: BenchQuery, silver: str, gold: str) -> str:
     return query.sql.format(silver=silver, gold=gold).strip()
 
 
+ANSWER_ROW_LIMIT = 50
+
+
 def fingerprint(columns: list[str], rows: list[tuple]) -> str:
     h = hashlib.sha256("\x1f".join(columns).encode())
     for row in rows:  # queries are ORDER BY'd, so row order is part of the answer
@@ -65,7 +68,7 @@ def fingerprint(columns: list[str], rows: list[tuple]) -> str:
     return h.hexdigest()
 
 
-def _run_record(result) -> dict:
+def run_record(result) -> dict:
     s = result.statistics
     return {
         "query_id": result.query_execution_id,
@@ -103,12 +106,18 @@ def run_benchmark(
     for q in queries:
         sql = render(q, silver, gold)
         database = silver if q.layer == "silver" else gold
-        runs, prints, row_count = [], set(), 0
+        runs, prints, row_count, answer = [], set(), 0, None
         for _ in range(repeats):
             r = run_query(athena, sql, workgroup, database, sleep=sleep)
-            runs.append(_run_record(r))
+            runs.append(run_record(r))
             prints.add(fingerprint(r.columns, r.rows))
             row_count = len(r.rows)
+            # Small aggregate answers are kept so the evidence shows the values, not just a hash.
+            answer = (
+                {"columns": r.columns, "rows": [list(row) for row in r.rows]}
+                if row_count <= ANSWER_ROW_LIMIT
+                else None
+            )
         if len(prints) != 1:
             raise RuntimeError(f"{q.name}: results differed between repeats; the data changed mid-run")
         if any(run["reused_result"] for run in runs):
@@ -121,6 +130,7 @@ def run_benchmark(
                 "sql": sql,
                 "rows": row_count,
                 "fingerprint": prints.pop(),
+                "answer": answer,
                 "runs": runs,
                 "summary": _summary(runs),
             }
