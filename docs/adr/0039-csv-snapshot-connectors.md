@@ -1,6 +1,6 @@
 # ADR 0039: CSV snapshot connectors (generic, and Government of Canada contracts)
 
-- **Status:** Accepted (tested locally on the real file; not yet landed in dev Bronze)
+- **Status:** Accepted (landed in dev Bronze 2026-11-12)
 - **Date:** 2026-11-12
 - **Implementation:**
   - `src/procurelake/ingestion/connectors/csv_snapshot.py`: the generic connector
@@ -84,8 +84,9 @@ checked 2026-11-12, gives:
 ## Consequences
 - **Local end-to-end run on the real file** (`--path`, `--expect-sha256`, local store),
   2026-11-12: `succeeded`, 1,336,184 records, 1,336,184 unique keys, pin matched, 13 s.
-- **Not yet landed in dev Bronze.** That needs the IAM change applied (CI, owner approval),
-  then `make ingest-canada-contracts`, about 655 MB of S3 storage.
+- **Landed in dev Bronze 2026-11-12** by the batch ingestion machine (ADR 0040), as batch
+  `20261112T201949Z-d3199586`: 1,336,184 records, keys unique, the same SHA-256 as the local
+  run. A second run skipped on the unchanged ETag and size.
 - **Not yet in the catalog or Silver.** A Bronze Glue table, and a Silver model with its grain
   and amendment handling, are follow-ups. They are the same question as USAspending (open
   questions 30 and 34).

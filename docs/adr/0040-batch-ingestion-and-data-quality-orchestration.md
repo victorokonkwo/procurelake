@@ -1,7 +1,6 @@
 # ADR 0040: Batch ingestion and daily data-quality state machines (task runner on Fargate)
 
-- **Status:** Accepted (built and tested offline; the checks ran live from the operator
-  machine; not yet deployed)
+- **Status:** Accepted (deployed 2026-11-12; every machine and task verified live)
 - **Date:** 2026-11-12
 - **Implementation:**
   - Container: `jobs/containers/task_runner/` (Dockerfile, allow-listed entrypoint)
@@ -95,9 +94,27 @@ the fact.
   not blocked, duplicates, null tenant).
   - The latest summary is batch `20261110T093202Z-983c92e5`. Silver currently holds 628 awards,
     5,561 invoices and 1,481 purchase orders, with no duplicate keys.
-  - The deployed machines have not run yet. That needs, in order: the PR, the image push, the
-    CI apply after owner approval, and then `make data-quality-run` and `make
-    batch-ingestion-run`.
+- **Deployed 2026-11-12** through CI, three owner-approved runs:
+  1. the IAM abort permission (#7);
+  2. the runner's repository, cluster and the ingestion trust (#8);
+  3. after `make task-runner-image`, the task definition, both machines and three schedules
+     (10 creates).
+
+  The third run stopped at observability, as designed: the alarms depend on ARNs that existed
+  only after data_platform applied, so the re-plan differed from the approved one and was
+  refused. A fourth run creates the two failure alarms.
+- **Image** `sha256:7a3cf5be…1994` (an OCI index; the ARM64 manifest is `a9172d74…`). ECR basic
+  scan: 0 critical, 2 high, 10 medium, 4 low. Both highs are glibc `2.41-12+deb13u4`
+  (CVE-2026-5435, CVE-2026-19499), the newest Debian 13 package at build time (the image runs
+  `apt-get upgrade`). The deployed dbt runner, on the same base, has the same two.
+- **First live runs, 2026-11-12, all SUCCEEDED:**
+
+  | Machine / task | Result |
+  |---|---|
+  | `data_quality` | 2 min 50 s. `dbt test` 65/65 pass (47 s). Silver checks as the data engineer: 35 checks, 0 failed |
+  | `batch_ingestion`, `ingest-usaspending` | 3 settled days filled, each reconciled with the source count before and after: 2026-10-24 (1,412 records), 10-25 (3,976), 10-26 (3,613) |
+  | `batch_ingestion`, `ingest-canada-contracts` | First run: 655,507,792 bytes landed in 24 s, 1,336,184 records, keys unique, SHA-256 `bb0fbab2…8375` (the same file measured earlier). Multipart in 10 parts, composite SHA-256, SSE-KMS with the data key, no upload left behind |
+  | same, run again | One HEAD request: "unchanged since batch …d3199586 (same ETag and size); skipped". Nothing downloaded or landed |
 - **Cost:** two or three short Fargate tasks a day (1 vCPU, 2 GiB, minutes each), one small
   Athena query per Silver table a day, and a 655 MB snapshot only when Canada publishes a new
   file.
