@@ -1,4 +1,6 @@
-# dbt runner on ECS Fargate (ADR 0029; open question 16 resolved).
+# dbt runner on ECS Fargate (ADR 0029; open question 16 resolved). The same module runs the
+# task runner image for batch ingestion and data quality (ADR 0040), with its own repository,
+# cluster, log group, security group and task role.
 #
 #   - ECR repository: immutable tags, scan on push, keep the last 10 images.
 #   - Task definition (ARM64, 0.5 vCPU / 1 GiB), created once an image digest is given: it runs
@@ -126,8 +128,15 @@ resource "aws_ecs_task_definition" "this" {
     cpu_architecture        = "ARM64"
   }
 
+  dynamic "ephemeral_storage" {
+    for_each = var.ephemeral_storage_gib == null ? [] : [var.ephemeral_storage_gib]
+    content {
+      size_in_gib = ephemeral_storage.value
+    }
+  }
+
   container_definitions = jsonencode([{
-    name      = "dbt"
+    name      = var.container_name
     image     = "${aws_ecr_repository.this.repository_url}@${var.image_digest}"
     essential = true
     environment = [
@@ -139,7 +148,7 @@ resource "aws_ecs_task_definition" "this" {
       options = {
         "awslogs-group"         = aws_cloudwatch_log_group.this.name
         "awslogs-region"        = var.region
-        "awslogs-stream-prefix" = "dbt"
+        "awslogs-stream-prefix" = var.container_name
       }
     }
   }])

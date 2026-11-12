@@ -97,6 +97,14 @@ def _run_csv(args: argparse.Namespace, raw_store: LandingStore, manifest_store: 
             key_columns=keys, provenance_url=args.provenance_url, license=args.license,
         )  # fmt: skip
     connector = CsvSnapshotConnector(raw_store, manifest_store)
+    if args.skip_if_unchanged and not args.path:
+        unchanged = connector.unchanged_batch(source)
+        if unchanged:
+            print(
+                f"{source.source_system}/{source.dataset}: unchanged since batch {unchanged} "
+                "(same ETag and size); skipped"
+            )
+            return 0
     manifest = connector.ingest(
         source, local_path=Path(args.path) if args.path else None, expect_sha256=args.expect_sha256
     )
@@ -153,6 +161,11 @@ def main(argv: list[str] | None = None) -> int:
     for p in (canada, generic):
         p.add_argument("--path", help="land this local file (a pinned copy) instead of downloading")
         p.add_argument("--expect-sha256", help="fail unless the file has this SHA-256 (pinned snapshot)")
+        p.add_argument(
+            "--skip-if-unchanged",
+            action="store_true",
+            help="HEAD the URL first; skip when ETag and size equal the latest succeeded batch",
+        )
     for p in (pg, canada, generic):
         p.add_argument("--raw-bucket")
         p.add_argument("--manifest-bucket")

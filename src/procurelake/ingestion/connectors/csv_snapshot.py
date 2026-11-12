@@ -35,7 +35,13 @@ from pathlib import Path
 from procurelake.ingestion.batch import code_version, new_batch_id
 from procurelake.ingestion.http import HttpClient, HttpError
 from procurelake.ingestion.landing import LandingStore, ObjectAlreadyExistsError, file_sha256_hex
-from procurelake.ingestion.manifest import IngestionManifest, LandedFile, Reconciliation, write_manifest
+from procurelake.ingestion.manifest import (
+    IngestionManifest,
+    LandedFile,
+    Reconciliation,
+    load_manifests,
+    write_manifest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +149,29 @@ class CsvSnapshotConnector:
         self.http = http or HttpClient(timeout_seconds=120)
         self.clock = clock
         self.workdir = workdir
+
+    def unchanged_batch(self, source: CsvSource) -> str | None:
+        """The latest succeeded batch if the published file still has its ETag and size.
+
+        One HEAD request, so a scheduled run does not download and land an identical copy.
+        Returns None when the source has no URL, no ETag, or anything differs.
+        """
+        if not source.url:
+            return None
+        done = [
+            m
+            for m in load_manifests(self.manifest_store, source.source_system, source.dataset)
+            if m.status == "succeeded" and m.request.get("etag")
+        ]
+        if not done:
+            return None
+        latest = max(done, key=lambda m: m.batch_id)
+        head = self.http.head(source.url).headers
+        length = head.get("Content-Length")
+        same_size = (
+            length is not None and length.isdigit() and int(length) == latest.request.get("content_length")
+        )
+        return latest.batch_id if head.get("ETag") == latest.request["etag"] and same_size else None
 
     def ingest(
         self, source: CsvSource, local_path: Path | None = None, expect_sha256: str | None = None

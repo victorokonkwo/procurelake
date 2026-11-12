@@ -19,21 +19,20 @@ locals {
     Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
     Action    = "sts:AssumeRole"
   }
-  service_trust = [for services in [var.trusted_service_principals] : {
-    Sid       = "AllowServices"
-    Effect    = "Allow"
-    Principal = { Service = services }
-    Action    = "sts:AssumeRole"
-    Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
-  } if length(services) > 0]
 
-  trust_policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = concat([local.account_trust], local.service_trust)
+  # Each role may additionally be assumed by the services that run its work: ECS tasks run dbt
+  # as the data engineer (ADR 0029), and batch ingestion as the ingestion role (ADR 0040).
+  ingestion_services = distinct(concat(var.trusted_service_principals, var.ingestion_service_principals))
+  ingestion_trust_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([local.account_trust], length(local.ingestion_services) == 0 ? [] : [{
+      Sid       = "AllowServices"
+      Effect    = "Allow"
+      Principal = { Service = local.ingestion_services }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
+    }])
   })
-
-  # The data engineer may additionally be assumed by services that run dbt for it (ECS tasks,
-  # ADR 0029); the ingestion role never is.
   data_engineer_services = distinct(concat(var.trusted_service_principals, var.data_engineer_service_principals))
   data_engineer_trust_policy = jsonencode({
     Version = "2012-10-17"
@@ -67,7 +66,7 @@ locals {
 resource "aws_iam_role" "ingestion" {
   name                 = "${var.name_prefix}-ingestion"
   description          = "Lands raw source data in Bronze and writes ingestion manifests."
-  assume_role_policy   = local.trust_policy
+  assume_role_policy   = local.ingestion_trust_policy
   max_session_duration = 3600
   tags                 = var.tags
 }

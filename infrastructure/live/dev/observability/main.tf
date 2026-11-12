@@ -16,12 +16,19 @@ locals {
   dp         = data.terraform_remote_state.data_platform.outputs
   sec        = data.terraform_remote_state.security.outputs
   alerts_arn = local.dp.pipeline_alerts_topic_arn
-  machines = {
+  machines = merge({
     cdc-processing      = local.dp.cdc_processing_state_machine_arn
     dbt-transformation  = local.dp.dbt_transformation_state_machine_arn
     tenant-exports      = local.sec.tenant_exports_state_machine_arn
     tenant-access-check = local.sec.tenant_access_check_state_machine_arn
-  }
+    }, {
+    # ADR 0040: null until the task runner image is deployed; try() covers state written before
+    # these outputs existed.
+    for k, v in {
+      batch-ingestion = try(local.dp.batch_ingestion_state_machine_arn, null)
+      data-quality    = try(local.dp.data_quality_state_machine_arn, null)
+    } : k => v if v != null
+  })
   cdc_namespace = "ProcureLake/CDC"
 }
 

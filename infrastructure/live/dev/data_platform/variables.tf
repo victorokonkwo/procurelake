@@ -128,3 +128,48 @@ variable "operator_arns" {
     error_message = "operator_arns must be IAM user or role ARNs."
   }
 }
+
+# Batch ingestion and data quality (ADR 0040).
+variable "task_runner_image_digest" {
+  description = "Digest of the task runner image in ECR (make task-runner-image). Empty until the first push: then nothing in batch_and_quality.tf except the runner's repository and cluster exists."
+  type        = string
+  default     = ""
+}
+
+variable "usaspending_since" {
+  description = "First settled day the scheduled USAspending gap-filler covers (YYYY-MM-DD)."
+  type        = string
+  default     = "2026-10-23" # the first window landed in dev (ADR 0020)
+  validation {
+    condition     = can(regex("^\\d{4}-\\d{2}-\\d{2}$", var.usaspending_since))
+    error_message = "usaspending_since must be YYYY-MM-DD."
+  }
+}
+
+variable "usaspending_max_days" {
+  description = "Most USAspending days one scheduled run collects."
+  type        = number
+  default     = 3
+  validation {
+    condition     = var.usaspending_max_days >= 1 && var.usaspending_max_days <= 31
+    error_message = "usaspending_max_days must be between 1 and 31."
+  }
+}
+
+variable "schedule_usaspending" {
+  description = "EventBridge Scheduler expression (America/Toronto) for USAspending ingestion; empty disables it."
+  type        = string
+  default     = "cron(0 7 * * ? *)"
+}
+
+variable "schedule_canada_contracts" {
+  description = "Schedule for the Canada contracts check (a HEAD request; a download only when the file changed); empty disables it."
+  type        = string
+  default     = "cron(30 7 ? * MON *)"
+}
+
+variable "schedule_data_quality" {
+  description = "Schedule for the daily data-quality checks (after maintenance 03:30 and tenant exports 06:00); empty disables it."
+  type        = string
+  default     = "cron(0 8 * * ? *)"
+}

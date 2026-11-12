@@ -9,3 +9,8 @@ dbt/logs/
 dbt/dbt_packages/
 dbt/.user.yml
 !jobs/containers/
+# Task runner (ADR 0040): the package and the files its wheel bundles.
+!src/
+!contracts/source/
+!configs/pipelines/silver/
+**/__pycache__/
