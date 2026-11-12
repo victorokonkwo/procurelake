@@ -82,6 +82,7 @@ module "iam" {
   ]
   # The dbt runner (ECS Fargate, ADR 0029) runs as the data engineer, like `make dbt-build`.
   data_engineer_service_principals = ["ecs-tasks.amazonaws.com"]
+  ingestion_service_principals     = ["ecs-tasks.amazonaws.com"] # batch ingestion on Fargate (ADR 0040)
 }
 
 # Roles AWS DMS requires by exact name (CDC, ADR 0027). Free; kept here so the disposable

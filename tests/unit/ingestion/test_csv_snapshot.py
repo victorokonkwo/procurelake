@@ -142,3 +142,21 @@ def test_s3_small_file_uses_single_put(tmp_path, s3):
     stored = store.put_new_file("bronze/x/small.csv", _write(tmp_path, GOOD), "text/csv")
     assert stored.sha256_hex == hashlib.sha256(GOOD).hexdigest()
     assert store.get("bronze/x/small.csv") == GOOD
+
+
+def test_unchanged_file_is_detected_with_one_head_request(tmp_path, httpserver):
+    headers = {"ETag": '"v1"'}
+    httpserver.expect_request("/data/things.csv").respond_with_data(
+        GOOD, content_type="text/csv", headers=headers
+    )
+    connector, _, _ = _connector(tmp_path)
+    connector.http = HttpClient(retry_policy=RetryPolicy(max_attempts=1), timeout_seconds=5)
+    source = CsvSource(**{**SOURCE.__dict__, "url": httpserver.url_for("/data/things.csv")})
+    assert connector.unchanged_batch(source) is None  # nothing landed yet
+    first = connector.ingest(source)
+    assert connector.unchanged_batch(source) == first.batch_id
+    httpserver.clear()
+    httpserver.expect_request("/data/things.csv").respond_with_data(
+        GOOD + b"3,c,z\r\n", content_type="text/csv", headers={"ETag": '"v2"'}
+    )
+    assert connector.unchanged_batch(source) is None  # new ETag and size

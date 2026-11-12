@@ -45,5 +45,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0037 | Security scanners in CI (Checkov, pip-audit, gitleaks) and the hardening they prompted (role trusts, default SGs, dbt task policy) | Accepted | [0037-security-scanning-and-hardening.md](0037-security-scanning-and-hardening.md) |
 | 0038 | `make destroy-dev`: targeted, plan-verified teardown of the compute roots; keeps state, foundation, DynamoDB, ECR, logs | Accepted (dry run verified; not executed) | [0038-destroy-dev.md](0038-destroy-dev.md) |
 | 0039 | CSV snapshot connectors: generic CSV and Government of Canada contracts over $10,000; byte-for-byte, header/field-count/key reconciliation, SHA-256 pinning, create-only multipart landing | Accepted (local run on the real file; not yet in dev Bronze) | [0039-csv-snapshot-connectors.md](0039-csv-snapshot-connectors.md) |
+| 0040 | Batch ingestion and daily data-quality state machines: task runner on Fargate (ingestion role; data engineer for the Silver checks), allow-listed tasks, schedules, alerts | Accepted (checks run live from the operator machine; machines not yet deployed) | [0040-batch-ingestion-and-data-quality-orchestration.md](0040-batch-ingestion-and-data-quality-orchestration.md) |
 
 Update the **ADR file** column as each ADR is written.

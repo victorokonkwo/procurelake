@@ -67,3 +67,18 @@ output "partition_evolution_job_name" {
   description = "On-demand Glue job evolving bench Silver partition specs (ADR 0034)."
   value       = module.partition_evolution.job_name
 }
+
+output "task_runner_repository_url" {
+  description = "ECR repository of the task runner image (make task-runner-image)."
+  value       = module.task_runner.repository_url
+}
+
+output "batch_ingestion_state_machine_arn" {
+  description = "Batch ingestion state machine (ADR 0040); null until the task runner image is deployed."
+  value       = local.runner_ready ? aws_sfn_state_machine.batch_ingestion[0].arn : null
+}
+
+output "data_quality_state_machine_arn" {
+  description = "Daily data-quality state machine (ADR 0040); null until the task runner image is deployed."
+  value       = local.runner_ready ? aws_sfn_state_machine.data_quality[0].arn : null
+}

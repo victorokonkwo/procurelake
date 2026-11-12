@@ -21,15 +21,13 @@ import logging
 import re
 from dataclasses import asdict
 from datetime import UTC, datetime
-from importlib import resources
-from pathlib import Path
 
-from procurelake.contracts.source import load_contracts
 from procurelake.ingestion.batch import code_version
 from procurelake.ingestion.landing import LandingStore
 from procurelake.ingestion.manifest import IngestionManifest, load_manifests
 from procurelake.lakehouse.silver.pipeline import SilverTableRun, run_table, select_snapshot_batch
-from procurelake.lakehouse.silver.spec import SilverTableSpec, load_specs
+from procurelake.lakehouse.silver.resources import load_silver_specs, resource_root  # noqa: F401 - re-exported
+from procurelake.lakehouse.silver.spec import SilverTableSpec
 
 logger = logging.getLogger(__name__)
 
@@ -40,28 +38,6 @@ _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 class SilverQualityGateError(RuntimeError):
     """Raised after the run summary is written when one or more tables were blocked."""
-
-
-def resource_root() -> Path:
-    """Directory holding ``contracts/source`` and ``configs/pipelines/silver``.
-
-    In a built wheel they are bundled under ``procurelake/_bundled``. In an editable checkout
-    (local development, tests) they are read from the repository root.
-    """
-    bundled = Path(str(resources.files("procurelake"))) / "_bundled"
-    if (bundled / "contracts" / "source").is_dir():
-        return bundled
-    repo = Path(__file__).resolve().parents[4]
-    if (repo / "contracts" / "source").is_dir() and (repo / "pyproject.toml").is_file():
-        return repo
-    raise FileNotFoundError("contracts/source not found in the package or the repository")
-
-
-def load_silver_specs(root: Path | None = None) -> dict[str, SilverTableSpec]:
-    root = root or resource_root()
-    return load_specs(
-        load_contracts(root / "contracts" / "source"), root / "configs" / "pipelines" / "silver"
-    )
 
 
 def run_batch(

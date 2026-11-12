@@ -1,0 +1,99 @@
+{
+  "Comment": "Batch ingestion (ADR 0040): run one allow-listed ingestion task in the task runner container on ECS Fargate, as the ingestion role. Input: {\"task\": \"ingest-usaspending\" | \"ingest-canada-contracts\"}. Fails, and alerts, unless the container exits 0.",
+  "StartAt": "ValidateInput",
+  "States": {
+    "ValidateInput": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Or": [
+            { "Variable": "$.task", "StringEquals": "ingest-usaspending" },
+            { "Variable": "$.task", "StringEquals": "ingest-canada-contracts" }
+          ],
+          "Next": "RunIngestion"
+        }
+      ],
+      "Default": "BadInput"
+    },
+    "RunIngestion": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "Cluster": "${cluster_arn}",
+        "TaskDefinition": "${task_definition_arn}",
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["${subnet_a}", "${subnet_b}"],
+            "SecurityGroups": ["${security_group_id}"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "task",
+              "Environment": [
+                { "Name": "PROCURELAKE_TASK", "Value.$": "$.task" },
+                { "Name": "PROCURELAKE_RUN_ID", "Value.$": "$$.Execution.Name" }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultSelector": {
+        "TaskArn.$": "$.TaskArn",
+        "StopCode.$": "$.StopCode",
+        "Containers.$": "$.Containers"
+      },
+      "ResultPath": "$.ingestion",
+      "Retry": [
+        {
+          "Comment": "Capacity or API errors before the task ran. A failed ingestion is not retried here: the next scheduled run fills the gap (the connectors are gap-filling and create-only).",
+          "ErrorEquals": ["ECS.AmazonECSException", "AmazonECS.Unknown"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "Alert" }],
+      "Next": "CheckExitCode"
+    },
+    "CheckExitCode": {
+      "Comment": "Do not rely on the integration failing on a non-zero exit: check it.",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            { "Variable": "$.ingestion.Containers[0].ExitCode", "IsPresent": true },
+            { "Variable": "$.ingestion.Containers[0].ExitCode", "NumericEquals": 0 }
+          ],
+          "Next": "Succeeded"
+        }
+      ],
+      "Default": "Alert"
+    },
+    "Alert": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${alerts_topic_arn}",
+        "Subject": "ProcureLake dev: batch ingestion failed",
+        "Message.$": "States.Format('Batch ingestion task {} failed (execution {}). The batch manifest records why; see the task log in /procurelake/${runner_name}. Runbook: docs/runbooks/pipeline-alarms.md', $.task, $$.Execution.Name)"
+      },
+      "ResultPath": null,
+      "Next": "IngestionFailed"
+    },
+    "Succeeded": { "Type": "Succeed" },
+    "IngestionFailed": {
+      "Type": "Fail",
+      "Error": "IngestionFailed",
+      "Cause": "The ingestion task did not exit 0 or did not start (see the task log and the batch manifest in pipeline_manifests/)."
+    },
+    "BadInput": {
+      "Type": "Fail",
+      "Error": "BadInput",
+      "Cause": "Input must be {\"task\": \"ingest-usaspending\"} or {\"task\": \"ingest-canada-contracts\"}."
+    }
+  }
+}

@@ -70,3 +70,29 @@ run "dashboard_metric_rows_are_arrays" {
     error_message = "Every metric widget row must be an array."
   }
 }
+
+run "batch_ingestion_and_data_quality_alarm_once_deployed" {
+  command = apply
+
+  override_data {
+    target = data.terraform_remote_state.data_platform
+    values = {
+      outputs = {
+        pipeline_alerts_topic_arn            = "arn:aws:sns:ca-central-1:123456789012:procurelake-dev-pipeline-alerts"
+        cdc_processing_state_machine_arn     = "arn:aws:states:ca-central-1:123456789012:stateMachine:procurelake-dev-cdc-processing"
+        dbt_transformation_state_machine_arn = "arn:aws:states:ca-central-1:123456789012:stateMachine:procurelake-dev-dbt-transformation"
+        batch_ingestion_state_machine_arn    = "arn:aws:states:ca-central-1:123456789012:stateMachine:procurelake-dev-batch-ingestion"
+        data_quality_state_machine_arn       = "arn:aws:states:ca-central-1:123456789012:stateMachine:procurelake-dev-data-quality"
+      }
+    }
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.state_machine_failed) == 6
+    error_message = "Batch ingestion and data quality need failure alarms too (ADR 0040)."
+  }
+  assert {
+    condition     = contains(keys(aws_cloudwatch_metric_alarm.state_machine_failed), "data-quality")
+    error_message = "The data-quality machine must have a failure alarm."
+  }
+}

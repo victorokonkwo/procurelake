@@ -112,12 +112,14 @@ glue-wheel: ## Build the procurelake wheel deployed to Glue (reproducible; dist/
 	uv build --wheel --out-dir dist
 
 DBT_DIGEST_FILE := build/dbt_runner.digest
+TASK_DIGEST_FILE := build/task_runner.digest
 
 .PHONY: dev-data-platform-plan
-dev-data-platform-plan: glue-wheel ## Plan dev/data_platform (Glue jobs, orchestration; uses build/dbt_runner.digest if present)
+dev-data-platform-plan: glue-wheel ## Plan dev/data_platform (Glue jobs, orchestration; uses build/dbt_runner.digest and build/task_runner.digest if present)
 	terraform -chdir=infrastructure/live/dev/data_platform init -input=false -backend-config=backend.hcl
 	terraform -chdir=infrastructure/live/dev/data_platform plan -input=false -out=data_platform.tfplan \
-	  -var dbt_image_digest=$$(cat $(DBT_DIGEST_FILE) 2>/dev/null)
+	  -var dbt_image_digest=$$(cat $(DBT_DIGEST_FILE) 2>/dev/null) \
+	  -var task_runner_image_digest=$$(cat $(TASK_DIGEST_FILE) 2>/dev/null)
 
 .PHONY: dbt-image
 dbt-image: ## Build the dbt runner image (ARM64), push it to ECR, record its digest in build/dbt_runner.digest
@@ -132,6 +134,38 @@ dbt-image: ## Build the dbt runner image (ARM64), push it to ECR, record its dig
 	  docker image inspect $$REPO:$$TAG --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep "^$$REPO@" | head -1 | cut -d@ -f2 > $(DBT_DIGEST_FILE) && \
 	  echo "pushed $$REPO:$$TAG digest $$(cat $(DBT_DIGEST_FILE))" && \
 	  echo "CI deploys the digest in the DBT_IMAGE_DIGEST repository variable (ADR 0035): gh variable set DBT_IMAGE_DIGEST --body \"\$$(cat $(DBT_DIGEST_FILE))\""
+
+.PHONY: task-runner-image
+task-runner-image: ## Build the task runner image (ARM64; batch ingestion + data quality, ADR 0040), push it to ECR, record its digest in build/task_runner.digest
+	@REPO=$$(terraform -chdir=infrastructure/live/dev/data_platform output -raw task_runner_repository_url) && \
+	  REGISTRY=$${REPO%%/*} && \
+	  docker build --platform linux/arm64 -f jobs/containers/task_runner/Dockerfile -t procurelake-task-runner:local . && \
+	  TAG=img-$$(docker image inspect procurelake-task-runner:local --format '{{.Id}}' | cut -c8-19) && \
+	  aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin $$REGISTRY && \
+	  docker tag procurelake-task-runner:local $$REPO:$$TAG && \
+	  docker push $$REPO:$$TAG && \
+	  mkdir -p build && \
+	  docker image inspect $$REPO:$$TAG --format '{{range .RepoDigests}}{{println .}}{{end}}' | grep "^$$REPO@" | head -1 | cut -d@ -f2 > $(TASK_DIGEST_FILE) && \
+	  echo "pushed $$REPO:$$TAG digest $$(cat $(TASK_DIGEST_FILE))" && \
+	  echo "CI deploys the digest in the TASK_RUNNER_IMAGE_DIGEST repository variable: gh variable set TASK_RUNNER_IMAGE_DIGEST --body \"\$$(cat $(TASK_DIGEST_FILE))\""
+
+.PHONY: batch-ingestion-run
+batch-ingestion-run: ## Start batch ingestion once and wait: TASK=ingest-usaspending|ingest-canada-contracts (ADR 0040)
+	@test -n "$(TASK)" || { echo "Usage: make batch-ingestion-run TASK=ingest-usaspending|ingest-canada-contracts"; exit 1; }
+	uv run python scripts/aws/run_state_machine.py \
+	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw batch_ingestion_state_machine_arn) \
+	  --input '{"task": "$(TASK)"}'
+
+.PHONY: data-quality-run
+data-quality-run: ## Run the daily data-quality checks once and wait (dbt test + Silver reconciliation; ADR 0040)
+	uv run python scripts/aws/run_state_machine.py \
+	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw data_quality_state_machine_arn)
+
+.PHONY: data-quality-local
+data-quality-local: ## The Silver checks only, from this machine as the data engineer (no dbt test); report in artifacts
+	uv run python -m procurelake.quality.cli --artifacts-bucket $(call BUCKET,artifacts) \
+	  --workgroup $$($(TFOUT) -raw athena_workgroup_name) --silver-database $$($(TFOUT) -raw silver_database_name) \
+	  --role-arn $$($(TFOUT) -raw data_engineer_role_arn) --run-id manual-$$(date -u +%Y%m%dT%H%M%SZ)
 
 .PHONY: orchestration-run
 orchestration-run: ## Start cdc_processing once by hand and wait (dev/cdc must be up)

@@ -5,7 +5,7 @@
 #   scripts/ci/terraform_dev.sh apply   # deploy role: re-plan, check fingerprint, apply
 #
 # Inputs (environment): AWS_ACCOUNT_ID and TF_STATE_KMS_KEY_ARN (secrets, so GitHub masks them),
-# DBT_IMAGE_DIGEST and DATA_LAKE_OPERATOR (repository variables). In apply mode,
+# DBT_IMAGE_DIGEST, TASK_RUNNER_IMAGE_DIGEST and DATA_LAKE_OPERATOR (repository variables). In apply mode,
 # EXPECTED_<ROOT> holds the fingerprint from the plan job, which the reviewer approved.
 #
 # The repository is public: full plan output and plan files never leave the runner. Only
@@ -54,7 +54,12 @@ EOF
   } >"${dir}/terraform.tfvars"
 
   extra=()
-  [[ "$root" == data_platform ]] && extra=(-var "dbt_image_digest=${DBT_IMAGE_DIGEST}")
+  # TASK_RUNNER_IMAGE_DIGEST may be empty until make task-runner-image first pushes (ADR 0040).
+  # Once set, keep it set: an empty value plans the removal of batch ingestion and data quality.
+  [[ "$root" == data_platform ]] && extra=(
+    -var "dbt_image_digest=${DBT_IMAGE_DIGEST}"
+    -var "task_runner_image_digest=${TASK_RUNNER_IMAGE_DIGEST:-}"
+  )
 
   terraform -chdir="$dir" init -input=false -backend-config=backend.hcl >/dev/null
   terraform -chdir="$dir" plan -input=false -lock-timeout=5m -out=ci.tfplan "${extra[@]}" >/dev/null

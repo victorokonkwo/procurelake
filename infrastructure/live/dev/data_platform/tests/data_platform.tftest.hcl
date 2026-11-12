@@ -51,6 +51,7 @@ override_data {
       bench_gold_database_name   = "procurelake_dev_bench_gold"
       athena_workgroup_name      = "procurelake-dev-engineering"
       data_engineer_role_arn     = "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"
+      ingestion_role_arn         = "arn:aws:iam::123456789012:role/procurelake-dev-ingestion"
     }
   }
 }
@@ -305,5 +306,68 @@ run "bench_jobs_touch_only_the_bench_namespace" {
   assert {
     condition     = module.bench_bronze_to_silver.job_arguments_for_test["--source-system"] == "postgres_bench"
     error_message = "The bench Silver job must read only postgres_bench batches."
+  }
+}
+
+run "no_batch_or_quality_machines_before_the_task_runner_image_exists" {
+  command = apply
+
+  variables {
+    dbt_image_digest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  }
+
+  assert {
+    condition     = length(aws_sfn_state_machine.batch_ingestion) == 0 && length(aws_sfn_state_machine.data_quality) == 0 && length(aws_scheduler_schedule.batch) == 0
+    error_message = "Batch ingestion and data quality need the task runner image (ADR 0040)."
+  }
+}
+
+run "batch_ingestion_and_data_quality_run_as_the_right_roles_and_alert" {
+  command = apply
+
+  variables {
+    dbt_image_digest         = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    task_runner_image_digest = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+  }
+
+  assert {
+    condition     = jsondecode(module.task_runner.container_definitions_for_test)[0].name == "task"
+    error_message = "The task runner container is named task (the state machines override it by name)."
+  }
+  assert {
+    condition     = jsondecode(aws_sfn_state_machine.batch_ingestion[0].definition).States.CheckExitCode.Default == "Alert" && jsondecode(aws_sfn_state_machine.batch_ingestion[0].definition).States.ValidateInput.Default == "BadInput"
+    error_message = "Batch ingestion must alert unless the task exits 0, and refuse unknown tasks."
+  }
+  assert {
+    condition     = jsondecode(aws_sfn_state_machine.data_quality[0].definition).States.SilverChecks.Parameters.Overrides.TaskRoleArn == "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"
+    error_message = "The Silver checks must run as the data engineer, not the ingestion role."
+  }
+  assert {
+    condition     = jsondecode(aws_sfn_state_machine.data_quality[0].definition).States.DbtTest.Catch[0].Next == "SilverChecks" && jsondecode(aws_sfn_state_machine.data_quality[0].definition).States.Evaluate.Default == "Alert"
+    error_message = "Both checks must always run, and any failure must alert."
+  }
+  assert {
+    condition = alltrue([for s in jsondecode(aws_iam_role_policy.batch_ingestion[0].policy).Statement :
+    s.Action != "iam:PassRole" || (s.Condition.StringEquals["iam:PassedToService"] == "ecs-tasks.amazonaws.com" && !contains(s.Resource, "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"))])
+    error_message = "Batch ingestion may pass only the runner's execution role and the ingestion role, to ECS tasks."
+  }
+  assert {
+    condition     = toset(keys(aws_scheduler_schedule.batch)) == toset(["usaspending", "canada-contracts", "data-quality"]) && aws_scheduler_schedule.batch["data-quality"].schedule_expression_timezone == "America/Toronto"
+    error_message = "All three schedules exist by default, in Toronto time."
+  }
+}
+
+run "an_empty_schedule_disables_it" {
+  command = apply
+
+  variables {
+    dbt_image_digest          = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    task_runner_image_digest  = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    schedule_canada_contracts = ""
+  }
+
+  assert {
+    condition     = !contains(keys(aws_scheduler_schedule.batch), "canada-contracts") && length(aws_sfn_state_machine.batch_ingestion) == 1
+    error_message = "An empty schedule turns that schedule off without removing the machine."
   }
 }

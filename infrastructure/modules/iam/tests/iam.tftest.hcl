@@ -185,3 +185,34 @@ run "only_the_data_engineer_trusts_ecs_tasks" {
     error_message = "Service trust must be limited to this account."
   }
 }
+
+run "ingestion_trusts_ecs_tasks_only_when_configured_and_account_scoped" {
+  command = apply
+
+  variables {
+    ingestion_service_principals = ["ecs-tasks.amazonaws.com"]
+  }
+
+  assert {
+    condition     = contains(flatten([for st in jsondecode(aws_iam_role.ingestion.assume_role_policy).Statement : flatten([try(st.Principal.Service, [])])]), "ecs-tasks.amazonaws.com")
+    error_message = "The ingestion role must be assumable by ECS tasks when configured (batch ingestion, ADR 0040)."
+  }
+  assert {
+    condition     = !contains(flatten([for st in jsondecode(aws_iam_role.data_engineer.assume_role_policy).Statement : flatten([try(st.Principal.Service, [])])]), "ecs-tasks.amazonaws.com")
+    error_message = "Ingestion's service principals must not leak into the data engineer's trust."
+  }
+  assert {
+    condition     = alltrue([for st in jsondecode(aws_iam_role.ingestion.assume_role_policy).Statement : !can(st.Principal.Service) || st.Condition.StringEquals["aws:SourceAccount"] == "123456789012"])
+    error_message = "Service trust must be limited to this account."
+  }
+}
+
+run "ingestion_may_abort_only_its_bronze_uploads" {
+  command = apply
+
+  assert {
+    condition = toset(flatten([for s in jsondecode(aws_iam_role_policy.ingestion.policy).Statement :
+    s.Resource if s.Effect == "Allow" && contains(flatten([s.Action]), "s3:AbortMultipartUpload")])) == toset(["${var.bucket_arns.raw}/bronze/*"])
+    error_message = "AbortMultipartUpload must be limited to the Bronze prefix."
+  }
+}

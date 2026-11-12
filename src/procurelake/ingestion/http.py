@@ -87,6 +87,10 @@ class HttpClient:
     def get(self, url: str) -> HttpResponse:
         return self._request("GET", url)
 
+    def head(self, url: str) -> HttpResponse:
+        """HEAD with redirects followed (requests does not follow them for HEAD by default)."""
+        return self._request("HEAD", url)
+
     def download_to(self, url: str, dest: Path, chunk_bytes: int = 1024 * 1024) -> DownloadResult:
         """Stream ``url`` to ``dest`` (overwritten on each attempt), with the same retry rules.
 
@@ -147,7 +151,9 @@ class HttpClient:
         for attempt in range(1, policy.max_attempts + 1):
             retry_after: float | None = None
             try:
-                response = self.session.request(method, url, json=json_body, timeout=self.timeout_seconds)
+                response = self.session.request(
+                    method, url, json=json_body, timeout=self.timeout_seconds, allow_redirects=True
+                )
             except (requests.ConnectionError, requests.Timeout) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
             else:

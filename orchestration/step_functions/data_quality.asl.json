@@ -1,0 +1,117 @@
+{
+  "Comment": "Daily data quality (ADR 0040): dbt test on Gold (no rebuild) in the dbt runner, then the Bronze-to-Silver reconciliation and Silver integrity checks in the task runner as the data engineer. Both always run; the execution fails, and alerts, unless both exit 0. Reports: dbt/runs/<execution>/ and pipeline_runs/quality/ in the artifacts bucket.",
+  "StartAt": "DbtTest",
+  "States": {
+    "DbtTest": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "Cluster": "${dbt_cluster_arn}",
+        "TaskDefinition": "${dbt_task_definition_arn}",
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["${subnet_a}", "${subnet_b}"],
+            "SecurityGroups": ["${dbt_security_group_id}"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "ContainerOverrides": [
+            {
+              "Name": "dbt",
+              "Environment": [
+                { "Name": "PROCURELAKE_DBT_COMMAND", "Value": "test" },
+                { "Name": "PROCURELAKE_RUN_ID", "Value.$": "$$.Execution.Name" }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultSelector": { "TaskArn.$": "$.TaskArn", "Containers.$": "$.Containers" },
+      "ResultPath": "$.dbt_test",
+      "Retry": [
+        {
+          "ErrorEquals": ["ECS.AmazonECSException", "AmazonECS.Unknown"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.dbt_test_error", "Next": "SilverChecks" }],
+      "Next": "SilverChecks"
+    },
+    "SilverChecks": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "Cluster": "${runner_cluster_arn}",
+        "TaskDefinition": "${runner_task_definition_arn}",
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": ["${subnet_a}", "${subnet_b}"],
+            "SecurityGroups": ["${runner_security_group_id}"],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "TaskRoleArn": "${data_engineer_role_arn}",
+          "ContainerOverrides": [
+            {
+              "Name": "task",
+              "Environment": [
+                { "Name": "PROCURELAKE_TASK", "Value": "data-quality" },
+                { "Name": "PROCURELAKE_RUN_ID", "Value.$": "$$.Execution.Name" }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultSelector": { "TaskArn.$": "$.TaskArn", "Containers.$": "$.Containers" },
+      "ResultPath": "$.silver_checks",
+      "Retry": [
+        {
+          "ErrorEquals": ["ECS.AmazonECSException", "AmazonECS.Unknown"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.silver_checks_error", "Next": "Alert" }],
+      "Next": "Evaluate"
+    },
+    "Evaluate": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            { "Variable": "$.dbt_test.Containers[0].ExitCode", "IsPresent": true },
+            { "Variable": "$.dbt_test.Containers[0].ExitCode", "NumericEquals": 0 },
+            { "Variable": "$.silver_checks.Containers[0].ExitCode", "IsPresent": true },
+            { "Variable": "$.silver_checks.Containers[0].ExitCode", "NumericEquals": 0 }
+          ],
+          "Next": "Passed"
+        }
+      ],
+      "Default": "Alert"
+    },
+    "Alert": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${alerts_topic_arn}",
+        "Subject": "ProcureLake dev: data quality checks failed",
+        "Message.$": "States.Format('Data quality execution {} failed. dbt test results: dbt/runs/{}/run_results.json; Silver checks: pipeline_runs/quality/ (artifacts bucket). Runbook: docs/runbooks/pipeline-alarms.md', $$.Execution.Name, $$.Execution.Name)"
+      },
+      "ResultPath": null,
+      "Next": "QualityFailed"
+    },
+    "Passed": { "Type": "Succeed" },
+    "QualityFailed": {
+      "Type": "Fail",
+      "Error": "QualityFailed",
+      "Cause": "dbt test or the Silver checks failed or did not run (see the reports in the artifacts bucket)."
+    }
+  }
+}

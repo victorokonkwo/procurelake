@@ -57,6 +57,18 @@ variable "memory" {
   default     = 1024
 }
 
+variable "container_name" {
+  description = "Container name in the task definition (Step Functions overrides target it). The module also runs the task runner image (ADR 0040)."
+  type        = string
+  default     = "dbt"
+}
+
+variable "ephemeral_storage_gib" {
+  description = "Fargate ephemeral storage (GiB, 21-200). Null keeps the 20 GiB default."
+  type        = number
+  default     = null
+}
+
 variable "log_retention_days" {
   description = "Log retention."
   type        = number
