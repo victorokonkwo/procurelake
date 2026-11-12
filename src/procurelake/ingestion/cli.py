@@ -11,12 +11,21 @@ Examples:
     # Local filesystem instead of S3 (no AWS needed):
     python -m procurelake.ingestion.cli usaspending --date 2026-11-08 --local-root ./local_lake
 
+    # Government of Canada contracts over $10,000 (downloaded, or from a pinned local copy):
+    python -m procurelake.ingestion.cli canada-contracts --local-root ./local_lake
+    python -m procurelake.ingestion.cli canada-contracts --path contracts.csv --expect-sha256 <sha> ...
+
+    # Any CSV file, as its own source and dataset:
+    python -m procurelake.ingestion.cli csv --source-system <src> --dataset <ds> --url <https url> \
+        --key-columns id --local-root ./local_lake
+
 The exit code is non-zero if any batch fails reconciliation.
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import os
 import sys
@@ -25,6 +34,8 @@ from pathlib import Path
 
 from procurelake.common.aws_clients import DEFAULT_REGION, build_session
 from procurelake.contracts.source import load_contracts
+from procurelake.ingestion.connectors import canada_contracts
+from procurelake.ingestion.connectors.csv_snapshot import CsvSnapshotConnector, CsvSource
 from procurelake.ingestion.connectors.postgres_snapshot import PostgresSnapshotConnector
 from procurelake.ingestion.connectors.usaspending import UsaspendingConnector, plan_incremental
 from procurelake.ingestion.http import HttpClient
@@ -69,6 +80,35 @@ def _run_postgres_snapshot(
     return 0 if all(m.status == "succeeded" for m in manifests) else 1
 
 
+def _run_csv(args: argparse.Namespace, raw_store: LandingStore, manifest_store: LandingStore) -> int:
+    if args.source == "canada-contracts":
+        source = canada_contracts.SOURCE
+        if args.path:
+            source = dataclasses.replace(source, url=None)
+    else:
+        if not args.url and not args.path:
+            raise SystemExit("csv needs --url or --path")
+        name = Path(args.path).name if args.path else args.url.rstrip("/").rsplit("/", 1)[-1].split("?")[0]
+        keys = tuple(k.strip() for k in (args.key_columns or "").split(",") if k.strip())
+        source = CsvSource(
+            source_system=args.source_system, dataset=args.dataset,
+            schema_version=args.schema_version or f"{args.source_system}.{args.dataset}.v1",
+            file_name=args.file_name or name or "data.csv", url=None if args.path else args.url,
+            key_columns=keys, provenance_url=args.provenance_url, license=args.license,
+        )  # fmt: skip
+    connector = CsvSnapshotConnector(raw_store, manifest_store)
+    manifest = connector.ingest(
+        source, local_path=Path(args.path) if args.path else None, expect_sha256=args.expect_sha256
+    )
+    rec = manifest.reconciliation
+    print(
+        f"{manifest.source_system}/{manifest.dataset} batch={manifest.batch_id} status={manifest.status} "
+        f"records={rec.landed_record_count} unique_keys={rec.unique_record_count} "
+        f"sha256={manifest.request.get('sha256')} detail={manifest.error or rec.detail}"
+    )
+    return 0 if manifest.status == "succeeded" else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -98,7 +138,22 @@ def main(argv: list[str] | None = None) -> int:
         default="postgres",
         help="Bronze/manifest namespace (postgres_bench for the Week 10 benchmarks)",
     )
-    for p in (pg,):
+    canada = sub.add_parser(
+        "canada-contracts", help="Government of Canada contracts over $10,000 (open data CSV)"
+    )
+    generic = sub.add_parser("csv", help="any CSV file as one snapshot batch")
+    generic.add_argument("--source-system", required=True)
+    generic.add_argument("--dataset", required=True)
+    generic.add_argument("--url", help="HTTPS URL to download")
+    generic.add_argument("--key-columns", help="comma-separated columns that must be unique and non-empty")
+    generic.add_argument("--schema-version")
+    generic.add_argument("--file-name", help="Bronze file name (default: from the URL or path)")
+    generic.add_argument("--provenance-url")
+    generic.add_argument("--license")
+    for p in (canada, generic):
+        p.add_argument("--path", help="land this local file (a pinned copy) instead of downloading")
+        p.add_argument("--expect-sha256", help="fail unless the file has this SHA-256 (pinned snapshot)")
+    for p in (pg, canada, generic):
         p.add_argument("--raw-bucket")
         p.add_argument("--manifest-bucket")
         p.add_argument("--role-arn", help="IAM role to assume (e.g. procurelake-dev-ingestion)")
@@ -110,6 +165,8 @@ def main(argv: list[str] | None = None) -> int:
     raw_store, manifest_store = _stores(args)
     if args.source == "postgres-snapshot":
         return _run_postgres_snapshot(args, raw_store, manifest_store)
+    if args.source in {"canada-contracts", "csv"}:
+        return _run_csv(args, raw_store, manifest_store)
     connector = UsaspendingConnector(HttpClient(), raw_store, manifest_store)
 
     last_settled_day = datetime.now(UTC).date() - timedelta(days=connector.config.settle_days)

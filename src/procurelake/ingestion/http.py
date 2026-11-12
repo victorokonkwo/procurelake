@@ -8,11 +8,13 @@ landed in Bronze exactly as received.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import requests
 
@@ -40,6 +42,20 @@ class HttpResponse:
 
     def json(self) -> object:
         return json.loads(self.body)
+
+
+@dataclass(frozen=True)
+class DownloadResult:
+    """A file streamed to disk, with what the server said about it."""
+
+    path: Path
+    size_bytes: int
+    sha256: str
+    content_length: int | None
+    etag: str | None
+    last_modified: str | None
+    final_url: str
+    attempts: int
 
 
 def _retry_after_seconds(value: str | None) -> float | None:
@@ -70,6 +86,60 @@ class HttpClient:
 
     def get(self, url: str) -> HttpResponse:
         return self._request("GET", url)
+
+    def download_to(self, url: str, dest: Path, chunk_bytes: int = 1024 * 1024) -> DownloadResult:
+        """Stream ``url`` to ``dest`` (overwritten on each attempt), with the same retry rules.
+
+        A body shorter or longer than ``Content-Length`` counts as a failed attempt.
+        """
+        policy = self.retry_policy
+        last_error = ""
+        for attempt in range(1, policy.max_attempts + 1):
+            retry_after: float | None = None
+            try:
+                with self.session.get(url, stream=True, timeout=self.timeout_seconds) as response:
+                    if response.status_code >= 400 and response.status_code not in RETRYABLE_STATUS:
+                        raise HttpError(
+                            f"GET {url} failed with HTTP {response.status_code}", response.status_code
+                        )
+                    if response.status_code < 400:
+                        digest, size = hashlib.sha256(), 0
+                        with dest.open("wb") as handle:
+                            for block in response.iter_content(chunk_bytes):
+                                handle.write(block)
+                                digest.update(block)
+                                size += len(block)
+                        length = response.headers.get("Content-Length")
+                        expected = int(length) if length and length.isdigit() else None
+                        if expected is None or size == expected:
+                            return DownloadResult(
+                                path=dest,
+                                size_bytes=size,
+                                sha256=digest.hexdigest(),
+                                content_length=expected,
+                                etag=response.headers.get("ETag"),
+                                last_modified=response.headers.get("Last-Modified"),
+                                final_url=response.url,
+                                attempts=attempt,
+                            )
+                        last_error = f"body {size} bytes, Content-Length {expected}"
+                    else:
+                        last_error = f"HTTP {response.status_code}"
+                        retry_after = _retry_after_seconds(response.headers.get("Retry-After"))
+            except (
+                requests.ConnectionError,
+                requests.Timeout,
+                requests.exceptions.ChunkedEncodingError,
+            ) as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+            if attempt == policy.max_attempts:
+                break
+            delay = policy.delay_before_retry(attempt, retry_after)
+            logger.warning(
+                "retrying GET %s after %s (attempt %d/%d)", url, last_error, attempt, policy.max_attempts
+            )
+            self._sleep(delay)
+        raise HttpError(f"GET {url} failed after {policy.max_attempts} attempts: {last_error}")
 
     def _request(self, method: str, url: str, json_body: dict | None = None) -> HttpResponse:
         policy = self.retry_policy
