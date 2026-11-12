@@ -83,8 +83,13 @@ reason.
 - **The working-tree scan finds 45 matches, all in git-ignored local files:** `.env` (the
   operator's own AWS key) and `build/` evidence (UUIDs). CI scans history only, which never
   contained them.
-- **The trust and security-group changes need a CI apply** (data_platform and security). After
-  it, `make test-aws`, the tenant exports and the access check confirm that the operator and
-  both state machines can still assume the tenant roles.
+- **Applied by CI on 2026-11-12** (deploy-dev run 43114073852, the scoped deploy role's first
+  IAM and EC2 writes): data_platform 3 changes, security 3 changes, foundation and
+  observability unchanged. Verified afterwards:
+  - `make test-aws`: 27 passed (tenant isolation, exports, admin product), so the operator can
+    still assume the tenant and admin roles;
+  - `make tenant-exports-run`: succeeded, so the exports state machine can still assume each
+    tenant role;
+  - the tenant access-check state machine: SUCCEEDED.
 - **The repository-wide skips are dev-scope decisions, not oversights.** The table is the list
   to revisit for production.

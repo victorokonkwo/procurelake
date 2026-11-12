@@ -1,0 +1,54 @@
+# Week 10 replay benchmark (ADR 0034 addendum): run these before and after re-processing an
+# already processed batch (bench Silver job on the same postgres_bench batch, then bench dbt
+# build). `make bench-compare` fails if any answer differs, so equal answers mean: no duplicate
+# business keys (rows - distinct keys stays 0) and identical totals. Same runner and format as
+# athena_queries.yaml; `{silver}` and `{gold}` are the bench databases.
+version: 1
+queries:
+  - name: silver_awards_keys
+    layer: silver
+    purpose: Rows, distinct award_id, duplicates, total awarded value per currency.
+    sql: |
+      select currency_code, count(*) as row_count, count(distinct award_id) as keys,
+             count(*) - count(distinct award_id) as duplicate_rows, sum(award_amount) as total
+      from {silver}.silver_awards group by 1 order by 1
+
+  - name: silver_invoices_keys
+    layer: silver
+    purpose: Rows, distinct invoice_id, duplicates, total invoiced and paid per currency.
+    sql: |
+      select currency_code, count(*) as row_count, count(distinct invoice_id) as keys,
+             count(*) - count(distinct invoice_id) as duplicate_rows,
+             sum(invoice_amount) as invoiced, sum(paid_amount) as paid
+      from {silver}.silver_invoices group by 1 order by 1
+
+  - name: silver_other_tables_keys
+    layer: silver
+    purpose: Rows and duplicates for the remaining Silver tables.
+    sql: |
+      select 'silver_agencies' as t, count(*) as row_count, count(*) - count(distinct agency_id) as duplicate_rows from {silver}.silver_agencies
+      union all select 'silver_suppliers', count(*), count(*) - count(distinct supplier_id) from {silver}.silver_suppliers
+      union all select 'silver_solicitations', count(*), count(*) - count(distinct solicitation_id) from {silver}.silver_solicitations
+      union all select 'silver_purchase_orders', count(*), count(*) - count(distinct po_id) from {silver}.silver_purchase_orders
+      union all select 'silver_tenants', count(*), count(*) - count(distinct tenant_id) from {silver}.silver_tenants
+      order by 1
+
+  - name: gold_facts_keys
+    layer: gold
+    purpose: Rows and duplicates on the Gold facts' unique keys.
+    sql: |
+      select 'fct_contract_award' as t, count(*) as row_count, count(*) - count(distinct award_id) as duplicate_rows from {gold}.fct_contract_award
+      union all select 'fct_purchase_order', count(*), count(*) - count(distinct po_id) from {gold}.fct_purchase_order
+      union all select 'fct_invoice', count(*), count(*) - count(distinct invoice_id) from {gold}.fct_invoice
+      order by 1
+
+  - name: gold_marts_totals
+    layer: gold
+    purpose: Row counts and totals of the two money marts (award totals and actual spend kept apart).
+    sql: |
+      select 'mart_awarded_value' as mart, currency_code, count(*) as row_count, sum(awarded_value) as total
+      from {gold}.mart_awarded_value group by 2
+      union all
+      select 'mart_actual_spend', currency_code, count(*), sum(actual_spend)
+      from {gold}.mart_actual_spend group by 2
+      order by 1, 2

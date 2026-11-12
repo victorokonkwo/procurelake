@@ -21,6 +21,11 @@ CHECKS = {
 }
 
 
+# Athena caps a query string at 262,144 bytes; a quoted UUID plus separator is 40 bytes, so
+# 2,000 keys (~80 KB) per query leaves ample room for the rest of the statement.
+KEYS_PER_QUERY = 2000
+
+
 def _keys_sql(keys: list[str]) -> str:
     for k in keys:
         if not _UUID.match(k):
@@ -41,26 +46,30 @@ def check_layers(
         changes = {k: c for (t, k), c in latest.items() if t == table}
         if not changes:
             continue
-        keys = _keys_sql(sorted(changes))
-        silver = {
-            r[0]: (r[1], r[2])
-            for r in run_query(
-                athena,
-                f"SELECT {pk}, {silver_col}, coalesce(_is_deleted, false) "  # noqa: S608
-                f"FROM silver_{table} WHERE {pk} IN ({keys})",
-                workgroup,
-                silver_db,
-            ).rows
-        }
-        gold = {
-            r[0]: r[1]
-            for r in run_query(
-                athena,
-                f"SELECT {pk}, {gold_col} FROM {gold_model} WHERE {pk} IN ({keys})",  # noqa: S608
-                workgroup,
-                gold_db,
-            ).rows
-        }
+        silver: dict = {}
+        gold: dict = {}
+        ordered = sorted(changes)
+        for start in range(0, len(ordered), KEYS_PER_QUERY):
+            keys = _keys_sql(ordered[start : start + KEYS_PER_QUERY])
+            silver.update(
+                (r[0], (r[1], r[2]))
+                for r in run_query(
+                    athena,
+                    f"SELECT {pk}, {silver_col}, coalesce(_is_deleted, false) "  # noqa: S608
+                    f"FROM silver_{table} WHERE {pk} IN ({keys})",
+                    workgroup,
+                    silver_db,
+                ).rows
+            )
+            gold.update(
+                (r[0], r[1])
+                for r in run_query(
+                    athena,
+                    f"SELECT {pk}, {gold_col} FROM {gold_model} WHERE {pk} IN ({keys})",  # noqa: S608
+                    workgroup,
+                    gold_db,
+                ).rows
+            )
         for key, change in changes.items():
             if change.kind == "D":
                 if silver.get(key, (None, "false"))[1] != "true":

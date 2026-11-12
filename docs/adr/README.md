@@ -18,7 +18,7 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0010 | GitHub Actions (OIDC) + Terraform; independent root modules per env/area | Accepted | [0010-cicd-github-actions-oidc-terraform.md](0010-cicd-github-actions-oidc-terraform.md) |
 | 0011 | Single-account `dev` first; multi-account as the evolution path | Accepted | [0011-single-account-dev-first.md](0011-single-account-dev-first.md) |
 | 0012 | Domain-oriented monorepo; business logic separated from job entrypoints | Accepted | [0012-monorepo-logic-separated-from-entrypoints.md](0012-monorepo-logic-separated-from-entrypoints.md) |
-| 0013 | DMS → S3 → Iceberg CDC vs. AWS Zero-ETL (evaluation) | Proposed | not written (Week 10) |
+| 0013 | DMS → S3 → Iceberg CDC vs. AWS Zero-ETL (evaluation): DMS stays; Zero-ETL from RDS PostgreSQL targets Redshift only | Accepted (documentation review, nothing deployed) | [0013-cdc-dms-vs-zero-etl.md](0013-cdc-dms-vs-zero-etl.md) |
 | 0014 | DMS Parquet output and its ordering limits vs. transaction-preserving CSV/streaming | Proposed | not written (Week 5) |
 | 0015 | Runtime versions: Glue 5.1 / Python 3.11, PostgreSQL 17 | Accepted | [0015-runtime-versions.md](0015-runtime-versions.md) |
 | 0016 | Operational (OLTP) schema design | Accepted | [0016-oltp-schema-design.md](0016-oltp-schema-design.md) |
@@ -43,5 +43,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0035 | CI deploys: plan on pull requests, owner-approved apply on dev, fingerprint-checked (GitHub Actions + OIDC) | Accepted (verified end to end) | [0035-ci-deploys-github-actions.md](0035-ci-deploys-github-actions.md) |
 | 0036 | Scoped CI deploy role: ReadOnlyAccess plus procurelake-dev writes, explicit denies (replaces AdministratorAccess) | Accepted (applied; used by CI) | [0036-scoped-ci-deploy-role.md](0036-scoped-ci-deploy-role.md) |
 | 0037 | Security scanners in CI (Checkov, pip-audit, gitleaks) and the hardening they prompted (role trusts, default SGs, dbt task policy) | Accepted | [0037-security-scanning-and-hardening.md](0037-security-scanning-and-hardening.md) |
+| 0038 | `make destroy-dev`: targeted, plan-verified teardown of the compute roots; keeps state, foundation, DynamoDB, ECR, logs | Accepted (dry run verified; not executed) | [0038-destroy-dev.md](0038-destroy-dev.md) |
 
 Update the **ADR file** column as each ADR is written.

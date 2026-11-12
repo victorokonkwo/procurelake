@@ -110,6 +110,22 @@ and `observability`, in that order. Bootstrap and `dev/cdc` stay manual.
 - Budget alerts are notifications, not spending caps.
 - `*.tfvars` and `backend.hcl` are git-ignored because they contain the account ID and alert emails.
 
+## Tearing dev down (`make destroy-dev`, ADR 0038)
+
+Run it only with the owner's explicit approval. Always start with `make destroy-dev DRY_RUN=1`.
+
+- **Destroys,** in order: `cdc`, `observability`, `security`, `data_platform`.
+- **Keeps:**
+  - the `bootstrap` and `foundation` roots: state, lake buckets and data, KMS, Glue databases,
+    the budget;
+  - inside `data_platform`: the DynamoDB tables, the dbt ECR repository and every log group.
+- **Before destroying,** it refuses while any Glue run or Step Functions execution is active,
+  backs up the DynamoDB tables to `s3://<artifacts>/teardown/<UTC>/`, and asks you to type
+  `destroy procurelake-dev`.
+- **To restore,** re-run the `deploy-dev` workflow, or plan and apply `data_platform`,
+  `security` and `observability` in that order. Then re-confirm the SNS email subscription.
+  Tenants have no access until `security` is back.
+
 ## Known gaps
 
 - The GitHub `procurelake-github-deploy-dev` role is scoped (ADR 0036): `ReadOnlyAccess` plus writes limited to

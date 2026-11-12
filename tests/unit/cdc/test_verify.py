@@ -61,3 +61,21 @@ def test_refuses_non_uuid_keys(monkeypatch):
         verify.check_layers(
             None, "wg", "silver", "gold", [Change("invoices", "x' OR '1'='1", "U", {"payment_status": "p"})]
         )
+
+
+def test_large_key_sets_are_split_under_athena_query_length_limit(monkeypatch):
+    keys = [f"00000000-0000-4000-8000-{i:012d}" for i in range(4_500)]
+    changes = [Change("invoices", k, "U", {"payment_status": "paid"}) for k in keys]
+    sqls: list[str] = []
+
+    def run_query(_athena, sql, _wg, database):
+        sqls.append(sql)
+        in_sql = [k for k in keys if k in sql]
+        if database == "silver":
+            return Result([(k, "paid", "false") for k in in_sql])
+        return Result([(k, "paid") for k in in_sql])
+
+    monkeypatch.setattr(verify, "run_query", run_query)
+    assert verify.check_layers(None, "wg", "silver", "gold", changes) == ([], [])
+    assert len(sqls) == 2 * 3  # 4,500 keys -> 3 chunks, Silver and Gold each
+    assert max(len(s.encode()) for s in sqls) < 262_144
