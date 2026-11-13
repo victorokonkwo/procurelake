@@ -1,7 +1,7 @@
 # ADR 0041: The end-to-end acceptance suite (plan §3): two tiers, and Silver schema evolution
 
-- **Status:** Accepted (local tier passing; live tier passing except tests 2–3 and 8, which
-  wait on a CDC session; see Consequences)
+- **Status:** Accepted (all 12 scenarios passing: local tier 2026-11-12, live tier 2026-11-13;
+  see Consequences)
 - **Date:** 2026-11-12
 - **Implementation:**
   - Local tier: `tests/e2e/` (`conftest.py`, `e2e_support.py`, `cdc_flow.py`, six test modules)
@@ -89,17 +89,36 @@ Spark job then failed on the next snapshot.
 
     All four queries are under Athena's 10 MB per-query minimum, so no cost is saved at this
     size.
-  - **Failed:** test 8, tenant isolation, on dev's data, not on isolation. No tenant saw
-    another's rows.
-    - The CDC benchmark workloads (2026-11-12) cancelled every award, so three marts hold no
-      `tenant_birch` rows, and the test refuses to call isolation proven for a tenant with
-      none.
+  - **First run, test 8 failed on dev's data, not on isolation.** No tenant saw another's rows.
+    - The CDC benchmark workloads (2026-11-12) had cancelled every award, so three marts held no
+      `tenant_birch` rows. The test refuses to call isolation proven for a tenant with none.
     - The exports were written at 06:00, before those changes (1,162 rows exported against
-      1,418 now).
+      1,418 at test time).
+- **Live tier, CDC session 2026-11-13** (fresh dev/cdc stack; RDS seeded with seed 42,
+  fingerprint `350d064e…`; DMS full load complete at 00:47:10 UTC, applied by the 00:48 scheduled
+  run):
+  - **Tests 2–3 passed.** One `tenant_alder` award's amount was changed and one invoice deleted,
+    committed at 00:57:40 UTC. Visibility, as polled:
 
-    A CDC session with a freshly seeded source restores the seed state: its keys are
-    deterministic, and the newer full load wins. Then `make tenant-exports-run`.
-  - **Not run:** tests 2–3, which need that same CDC session.
+    | Check | Visible at (UTC) | After commit |
+    |---|---|---|
+    | Silver award amount | 01:00:06 | 2 min 26 s |
+    | Silver invoice tombstone | 01:00:08 | 2 min 29 s |
+    | Gold `fct_contract_award` amount | 01:01:16 | 3 min 37 s |
+    | Gold invoice absent from `fct_invoice` | 01:01:18 | 3 min 38 s |
+
+    Evidence: `build/evidence/acceptance_cdc_to_gold.json` (not committed).
+  - **Test 8: the full live suite (`make test-aws`) ran 28 passed and 1 failed.** The failure
+    was Alder's `mart_actual_spend` export: 1,154 rows against 1,153 in the mart.
+    - The exports had run at 01:01:26 UTC, inside the pipeline run that carried the delete
+      (00:58:18–01:04:46), before that run rebuilt the mart.
+    - Every export still held only its own tenant's rows.
+    - The exports were rerun with the pipeline idle. All 12 tenant isolation tests then passed:
+      each tenant sees only its own rows in all four marts, the exports hold only the tenant's
+      rows and match the mart counts, and the admin sees both tenants.
+  - **Test-ordering rule:** the export count check compares a daily snapshot with the live mart.
+    Run `make tenant-exports-run` and test 8 only while `cdc_processing` is idle, never during
+    a CDC test.
 
 ## Alternatives considered
 - **A local Gold:** there is no local engine for dbt-athena. Re-implementing the marts in Spark
