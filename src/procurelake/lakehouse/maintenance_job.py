@@ -27,7 +27,7 @@ import boto3
 from procurelake.cdc.checkpoint import CheckpointStore
 from procurelake.governance.catalog import SyncResult, sync_silver
 from procurelake.lakehouse.maintenance import Athena, Retention, TableResult, TableTarget, run
-from procurelake.lakehouse.silver.resources import load_silver_specs
+from procurelake.lakehouse.silver.resources import load_reference, load_silver_specs
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +73,11 @@ def targets(args: argparse.Namespace) -> list[TableTarget]:
 
 
 def catalog_step(glue, args: argparse.Namespace) -> list[SyncResult]:
-    """Write contract metadata to the maintained Silver tables that have a source contract."""
+    """Write contract metadata to the maintained Silver tables that have a source or reference contract."""
     wanted = set(_names(args.silver_tables))
     specs = [s for s in load_silver_specs().values() if s.silver_table in wanted]
-    return sync_silver(glue, args.silver_database, specs)
+    refs = [c for c in load_reference().values() if c.silver_table in wanted]
+    return sync_silver(glue, args.silver_database, [*specs, *refs])
 
 
 def report(

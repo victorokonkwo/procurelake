@@ -27,6 +27,13 @@ def test_usaspending_fills_gaps_since_a_validated_date():
     assert "--role-arn" not in argv  # rights come from the task role
 
 
+def test_resweep_collects_the_configured_recent_days_again():
+    _module, argv = entry.task_argv(BASE | {"PROCURELAKE_TASK": "resweep-usaspending"})
+    assert argv[:3] == ["usaspending", "--resweep-days", "30"]  # owner decision 2026-11-13
+    env = BASE | {"PROCURELAKE_TASK": "resweep-usaspending", "PROCURELAKE_USASPENDING_RESWEEP_DAYS": "14"}
+    assert entry.task_argv(env)[1][:3] == ["usaspending", "--resweep-days", "14"]
+
+
 def test_canada_contracts_skips_an_unchanged_file():
     _module, argv = entry.task_argv(BASE | {"PROCURELAKE_TASK": "ingest-canada-contracts"})
     assert argv[:2] == ["canada-contracts", "--skip-if-unchanged"]
@@ -55,6 +62,7 @@ def test_data_quality_arguments():
             "PROCURELAKE_USASPENDING_MAX_DAYS": "400",
         },
         BASE | {"PROCURELAKE_TASK": "data-quality", "PROCURELAKE_RUN_ID": "bad id with spaces"},
+        BASE | {"PROCURELAKE_TASK": "resweep-usaspending", "PROCURELAKE_USASPENDING_RESWEEP_DAYS": "61"},
         {"PROCURELAKE_TASK": "ingest-canada-contracts", "PROCURELAKE_RUN_ID": "x"},  # no buckets
     ],
 )

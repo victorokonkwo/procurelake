@@ -205,3 +205,33 @@ def test_maintenance_catalog_step_covers_only_contracted_silver_tables(glue):
     assert [(r.table, r.status) for r in results] == [(f"{DB}.silver_awards", "unchanged")]
     body = report([], datetime.now(UTC), "r", results)
     assert body["catalog_failed"] == [] and json.dumps(body)
+
+
+def test_reference_table_gets_its_contract_metadata_and_is_synced_by_maintenance(glue):
+    from procurelake.governance.catalog import reference_metadata
+    from procurelake.lakehouse.silver.resources import load_reference
+
+    contract = load_reference()["usaspending_contract_awards"]
+    meta = reference_metadata(contract)
+    assert meta.parameters["data_classification"] == "public"
+    assert meta.parameters["tenant_scoped"] == "false"
+    assert meta.parameters["source_table"] == "usaspending/spending_by_award"
+    assert meta.parameters["currency_code"] == "USD"
+    assert "AWARDED value, not actual spend" in meta.description
+
+    client, stub = glue
+    args = parse_args([
+        "--workgroup", "wg", "--silver-database", DB, "--gold-database", "g", "--report-bucket", "b",
+        "--checkpoint-table", "c", "--silver-tables", "silver_usaspending_contract_awards",
+        "--silver-max-age-seconds", "1", "--silver-min-snapshots", "1",
+        "--gold-max-age-seconds", "1", "--gold-min-snapshots", "1",
+    ])  # fmt: skip
+    table = iceberg_table("silver_usaspending_contract_awards", Description=meta.description)
+    table["Parameters"].update(meta.parameters)
+    stub.add_response(
+        "get_table", {"Table": table}, {"DatabaseName": DB, "Name": "silver_usaspending_contract_awards"}
+    )
+    results = catalog_step(client, args)
+    assert [(r.table, r.status) for r in results] == [
+        (f"{DB}.silver_usaspending_contract_awards", "unchanged")
+    ]

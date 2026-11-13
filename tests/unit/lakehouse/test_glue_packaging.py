@@ -112,6 +112,7 @@ def test_pyproject_force_includes_bundled_dirs():
     include = config["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
     assert include == {
         "contracts/source": "procurelake/_bundled/contracts/source",
+        "contracts/reference": "procurelake/_bundled/contracts/reference",  # ADR 0044
         "configs/pipelines/silver": "procurelake/_bundled/configs/pipelines/silver",
     }
 

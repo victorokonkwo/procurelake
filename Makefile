@@ -150,8 +150,8 @@ task-runner-image: ## Build the task runner image (ARM64; batch ingestion + data
 	  echo "CI deploys the digest in the TASK_RUNNER_IMAGE_DIGEST repository variable: gh variable set TASK_RUNNER_IMAGE_DIGEST --body \"\$$(cat $(TASK_DIGEST_FILE))\""
 
 .PHONY: batch-ingestion-run
-batch-ingestion-run: ## Start batch ingestion once and wait: TASK=ingest-usaspending|ingest-canada-contracts (ADR 0040)
-	@test -n "$(TASK)" || { echo "Usage: make batch-ingestion-run TASK=ingest-usaspending|ingest-canada-contracts"; exit 1; }
+batch-ingestion-run: ## Start batch ingestion once and wait: TASK=ingest-usaspending|resweep-usaspending|ingest-canada-contracts (ADR 0040, 0044)
+	@test -n "$(TASK)" || { echo "Usage: make batch-ingestion-run TASK=ingest-usaspending|resweep-usaspending|ingest-canada-contracts"; exit 1; }
 	uv run python scripts/aws/run_state_machine.py \
 	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw batch_ingestion_state_machine_arn) \
 	  --input '{"task": "$(TASK)"}'
@@ -195,6 +195,11 @@ silver-run: ## Run the Bronze->Silver Glue job on the latest complete snapshot b
 	uv run python scripts/aws/run_glue_job.py \
 	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw bronze_to_silver_job_name) \
 	  $(if $(BATCH),--arg=--batch-id=$(BATCH),)
+
+.PHONY: reference-silver-run
+reference-silver-run: ## Apply pending USAspending batches to Silver (Glue) and wait; summary in pipeline_runs/silver/usaspending/ (ADR 0044)
+	uv run python scripts/aws/run_glue_job.py \
+	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw reference_to_silver_job_name)
 
 .PHONY: iceberg-maintenance-run
 iceberg-maintenance-run: ## Run the daily Iceberg maintenance job now (retention, OPTIMIZE, VACUUM; ADR 0033) and wait; report in artifacts/iceberg_maintenance/

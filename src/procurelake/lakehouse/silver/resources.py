@@ -9,6 +9,7 @@ from __future__ import annotations
 from importlib import resources
 from pathlib import Path
 
+from procurelake.contracts.reference import ReferenceContract, load_reference_contracts
 from procurelake.contracts.source import load_contracts
 from procurelake.lakehouse.silver.spec import SilverTableSpec, load_specs
 
@@ -33,3 +34,9 @@ def load_silver_specs(root: Path | None = None) -> dict[str, SilverTableSpec]:
     return load_specs(
         load_contracts(root / "contracts" / "source"), root / "configs" / "pipelines" / "silver"
     )
+
+
+def load_reference(root: Path | None = None) -> dict[str, ReferenceContract]:
+    """Reference contracts (ADR 0044), keyed by contract name."""
+    root = root or resource_root()
+    return load_reference_contracts(root / "contracts" / "reference")

@@ -1,0 +1,75 @@
+# Reference contract (ADR 0044): USAspending.gov contract awards, public US federal data.
+# Bronze: one JSON page per file from /api/v2/search/spending_by_award/ (connector
+# procurelake.ingestion.connectors.usaspending, schema usaspending.spending_by_award.contracts.v1).
+# Field formats were read from a real response (2026-10-30 window, 24,800 records, 2026-11-13).
+contract_version: 1
+name: usaspending_contract_awards
+source_system: usaspending
+dataset: spending_by_award
+bronze_schema_version: usaspending.spending_by_award.contracts.v1
+silver_table: silver_usaspending_contract_awards
+owner: data-platform
+description: >-
+  Public US federal contract awards (award types A-D) from USAspending.gov, one row per award at
+  its latest Last Modified Date. A reference dataset kept separate from the synthetic tenants.
+  award_amount is AWARDED value, not actual spend; total_outlays is the amount paid to date. Both
+  are in US dollars as published.
+grain: one row per generated_internal_id (latest Last Modified Date)
+data_classification: public
+provenance: >-
+  USAspending.gov API (https://api.usaspending.gov), spending_by_award search by
+  last_modified_date; each row keeps its Bronze batch and page file.
+currency_code: USD
+primary_key: [generated_internal_id]
+change_column: last_modified_at
+deletes: none
+max_reject_ratio: 0.01
+columns:
+  - {name: generated_internal_id, source_field: generated_internal_id, type: text, nullable: false,
+     description: USAspending's unique award key (CONT_AWD_<piid>_<agency>_<parent piid>_<parent agency>).}
+  - {name: award_id, source_field: Award ID, type: text, nullable: true,
+     description: The award's PIID as published (not unique on its own).}
+  - {name: recipient_name, source_field: Recipient Name, type: text, nullable: true,
+     description: Recipient (supplier) name as published.}
+  - {name: recipient_uei, source_field: Recipient UEI, type: text, nullable: true,
+     description: Recipient Unique Entity Identifier.}
+  - {name: award_amount, source_field: Award Amount, type: "numeric(23,2)", nullable: true, monetary: true,
+     description: AWARDED value of the award in USD. Not actual spend.}
+  - {name: total_outlays, source_field: Total Outlays, type: "numeric(23,2)", nullable: true, monetary: true,
+     description: Outlays (payments) to date in USD; null when USAspending has none.}
+  - {name: awarding_agency, source_field: Awarding Agency, type: text, nullable: true,
+     description: Top-tier awarding agency name.}
+  - {name: awarding_agency_code, source_field: Awarding Agency Code, type: text, nullable: true,
+     description: Top-tier awarding agency code (leading zeros kept).}
+  - {name: awarding_sub_agency, source_field: Awarding Sub Agency, type: text, nullable: true,
+     description: Awarding sub-tier agency name.}
+  - {name: awarding_sub_agency_code, source_field: Awarding Sub Agency Code, type: text, nullable: true,
+     description: Awarding sub-tier agency code.}
+  - {name: funding_agency, source_field: Funding Agency, type: text, nullable: true,
+     description: Top-tier funding agency name.}
+  - {name: funding_sub_agency, source_field: Funding Sub Agency, type: text, nullable: true,
+     description: Funding sub-tier agency name.}
+  - {name: contract_award_type, source_field: Contract Award Type, type: text, nullable: true,
+     description: "Award type as published (BPA CALL, PURCHASE ORDER, DELIVERY ORDER, DEFINITIVE CONTRACT)."}
+  - {name: start_date, source_field: Start Date, type: date, nullable: true,
+     description: Period of performance start date.}
+  - {name: end_date, source_field: End Date, type: date, nullable: true,
+     description: Period of performance current end date.}
+  - {name: base_obligation_date, source_field: Base Obligation Date, type: date, nullable: true,
+     description: Date of the base obligation.}
+  - {name: last_modified_at, source_field: Last Modified Date, type: timestamp_ntz, nullable: false,
+     description: "Last Modified Date as published (YYYY-MM-DD HH:MM:SS). The API states no time zone, so none is assumed."}
+  - {name: naics_code, source_field: NAICS.code, type: text, nullable: true,
+     description: NAICS industry code.}
+  - {name: naics_description, source_field: NAICS.description, type: text, nullable: true,
+     description: NAICS industry description.}
+  - {name: psc_code, source_field: PSC.code, type: text, nullable: true,
+     description: Product and Service Code.}
+  - {name: psc_description, source_field: PSC.description, type: text, nullable: true,
+     description: Product and Service Code description.}
+  - {name: description, source_field: Description, type: text, nullable: true,
+     description: Award description as published.}
+  - {name: pop_state_code, source_field: Place of Performance State Code, type: text, nullable: true,
+     description: Place of performance state code.}
+  - {name: pop_country_code, source_field: Place of Performance Country Code, type: text, nullable: true,
+     description: Place of performance country code.}
