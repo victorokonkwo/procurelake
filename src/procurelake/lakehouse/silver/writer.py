@@ -56,6 +56,10 @@ class StaleBatchError(RuntimeError):
     """Raised when a batch older than the table's last applied batch is applied."""
 
 
+class SchemaEvolutionError(RuntimeError):
+    """The contract changed the table's schema in a way the compatibility rule does not allow."""
+
+
 class CdcOwnedTableError(RuntimeError):
     """Raised when a snapshot would be applied to a table that CDC now maintains (ADR 0028)."""
 
@@ -89,12 +93,28 @@ def ensure_table(spark: SparkSession, spec: SilverTableSpec, fq_table: str, loca
         )
         """
     )
-    # Tables created before the lineage columns were part of every Silver table get them here:
-    # Iceberg ADD COLUMNS is metadata-only, and existing rows read the new columns as null.
+    # Schema evolution (ADR 0022 compatibility rule; acceptance test 6). A column the contract
+    # gained since the table was created is added: Iceberg ADD COLUMNS is metadata-only, and
+    # existing rows read the new column as null, so no data is rewritten or lost. Within a
+    # contract version only nullable additions are allowed, so a new NOT NULL column is refused
+    # (its existing rows could not satisfy it). Tables created before the lineage columns were
+    # part of every Silver table get those the same way.
     existing = {f.name for f in spark.table(fq_table).schema.fields}
-    to_add = [f"`{n}` {t}" for n, t in CDC_COLUMNS if n not in existing]
+    new_contract = [c for c in spec.contract.columns if c.name not in existing]
+    required = [c.name for c in new_contract if not c.nullable]
+    if required:
+        raise SchemaEvolutionError(
+            f"{fq_table}: contract adds NOT NULL column(s) {required}; only nullable columns may be "
+            "added within a contract version (ADR 0022)"
+        )
+    types = dict(spec.columns)
+    to_add = [f"`{c.name}` {types[c.name]}" for c in new_contract]
+    to_add += [f"`{n}` {t}" for n, t in CDC_COLUMNS if n not in existing]
     if to_add:
         spark.sql(f"ALTER TABLE {fq_table} ADD COLUMNS ({', '.join(to_add)})")
+    if new_contract:
+        version = spec.contract.contract_version
+        spark.sql(f"ALTER TABLE {fq_table} SET TBLPROPERTIES ('procurelake.contract_version' = '{version}')")
 
 
 def last_applied_batch(spark: SparkSession, fq_table: str) -> str | None:

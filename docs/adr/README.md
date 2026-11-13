@@ -46,5 +46,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0038 | `make destroy-dev`: targeted, plan-verified teardown of the compute roots; keeps state, foundation, DynamoDB, ECR, logs | Accepted (dry run verified; not executed) | [0038-destroy-dev.md](0038-destroy-dev.md) |
 | 0039 | CSV snapshot connectors: generic CSV and Government of Canada contracts over $10,000; byte-for-byte, header/field-count/key reconciliation, SHA-256 pinning, create-only multipart landing | Accepted (in dev Bronze 2026-11-12) | [0039-csv-snapshot-connectors.md](0039-csv-snapshot-connectors.md) |
 | 0040 | Batch ingestion and daily data-quality state machines: task runner on Fargate (ingestion role; data engineer for the Silver checks), allow-listed tasks, schedules, alerts | Accepted (deployed and run live 2026-11-12) | [0040-batch-ingestion-and-data-quality-orchestration.md](0040-batch-ingestion-and-data-quality-orchestration.md) |
+| 0041 | End-to-end acceptance suite (plan §3): local tier (PostgreSQL + Spark + test doubles) and live tier; Silver schema evolution for nullable contract additions | Accepted (local passing; live 2–3 and 8 wait on a CDC session) | [0041-acceptance-test-suite.md](0041-acceptance-test-suite.md) |
 
 Update the **ADR file** column as each ADR is written.

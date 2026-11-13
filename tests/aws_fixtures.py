@@ -1,4 +1,5 @@
-"""Fixtures for integration tests against the deployed dev environment.
+"""Fixtures for live tests against the deployed dev environment (tests/integration/aws,
+tests/security, tests/e2e live tier, tests/performance). Registered from the root conftest.py.
 
 These tests run real AWS calls (Athena queries scan a few MB; cost is negligible). They are
 opt-in: set PROCURELAKE_AWS_TESTS=1 and the PROCURELAKE_DEV_* variables. `make test-aws` does
@@ -30,7 +31,7 @@ REQUIRED = [
     "PROCURELAKE_DEV_GOLD_DATABASE",
     "PROCURELAKE_DEV_CDC_CHECKPOINT_TABLE",
 ]
-EVIDENCE_PATH = Path(__file__).resolve().parents[3] / "build" / "evidence" / "aws_integration.json"
+EVIDENCE_PATH = Path(__file__).resolve().parents[1] / "build" / "evidence" / "aws_integration.json"
 
 
 def pytest_collection_modifyitems(config, items):
