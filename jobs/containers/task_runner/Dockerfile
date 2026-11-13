@@ -16,9 +16,11 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --locked --no-default-groups --no-install-project && rm -rf /root/.cache
-# The wheel bundles contracts/source and configs/pipelines/silver (pyproject force-include).
+# The wheel bundles every pyproject force-include directory (contracts/source, contracts/reference,
+# configs/pipelines/silver); hatchling fails the build if one is missing.
 COPY src/ src/
 COPY contracts/source/ contracts/source/
+COPY contracts/reference/ contracts/reference/
 COPY configs/pipelines/silver/ configs/pipelines/silver/
 RUN uv sync --locked --no-default-groups --no-editable && rm -rf /root/.cache src contracts configs
 

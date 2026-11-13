@@ -117,6 +117,23 @@ def test_pyproject_force_includes_bundled_dirs():
     }
 
 
+def test_task_runner_image_copies_every_force_included_dir():
+    # The image builds the wheel from a partial copy of the repository; a force-include
+    # directory left out fails the build (found building the image for ADR 0044).
+    config = tomllib.loads((REPO / "pyproject.toml").read_text())
+    include = config["tool"]["hatch"]["build"]["targets"]["wheel"]["force-include"]
+    dockerfile = (REPO / "jobs" / "containers" / "task_runner" / "Dockerfile").read_text()
+    copied = {
+        line.split()[1].rstrip("/")
+        for line in dockerfile.splitlines()
+        if line.startswith("COPY ") and "--from" not in line
+    }
+    assert set(include) <= copied
+    ignore = (REPO / ".dockerignore").read_text().splitlines()
+    unignored = {line[1:].rstrip("/") for line in ignore if line.startswith("!")}
+    assert set(include) <= unignored  # the build context must contain them too
+
+
 @pytest.mark.parametrize("bad", ["glue-catalog", "x; DROP"])
 def test_run_batch_rejects_bad_names(bad):
     from procurelake.lakehouse.silver.job import run_batch
