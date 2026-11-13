@@ -9,6 +9,7 @@ models:
       grain: one row per tenant_id, agency_id, supplier_id, award_month, currency_code
       owner: procurement-analytics
       freshness: "24h after the source snapshot"
+      data_classification: synthetic
     data_tests:
       - unique_combination:
           arguments: {columns: [tenant_id, agency_id, supplier_id, award_month, currency_code]}
@@ -32,6 +33,7 @@ models:
       grain: one row per tenant_id, currency_code, supplier_id
       owner: procurement-analytics
       freshness: "24h after the source snapshot"
+      data_classification: synthetic
     data_tests:
       - unique_combination:
           arguments: {columns: [tenant_id, currency_code, supplier_id]}
@@ -51,6 +53,7 @@ models:
       grain: one row per tenant_id, agency_id, award_month
       owner: procurement-analytics
       freshness: "24h after the source snapshot"
+      data_classification: synthetic
     data_tests:
       - unique_combination:
           arguments: {columns: [tenant_id, agency_id, award_month]}
@@ -70,6 +73,7 @@ models:
       grain: one row per tenant_id, agency_id, supplier_id, paid_month, currency_code
       owner: finance-analytics
       freshness: "24h after the source snapshot"
+      data_classification: synthetic
     data_tests:
       - unique_combination:
           arguments: {columns: [tenant_id, agency_id, supplier_id, paid_month, currency_code]}

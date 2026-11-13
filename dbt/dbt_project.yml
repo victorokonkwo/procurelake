@@ -12,6 +12,13 @@ clean-targets: [target, dbt_packages, logs]
 
 models:
   procurelake:
+    # Catalog governance (ADR 0042): dbt-athena writes each model's description to the Glue table
+    # (Description and the `comment` parameter), its meta (grain, owner, freshness,
+    # data_classification) as Glue table parameters, and column descriptions as column comments.
+    # It updates Glue only when they differ, so an unchanged model costs no table version.
+    +persist_docs:
+      relation: true
+      columns: true
     # Staging is ephemeral (compiled into Gold models as CTEs). Athena views are stored in Glue
     # with Hive column types, which cannot express timestamp(6), so staging is not stored at all.
     staging:

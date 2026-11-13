@@ -37,8 +37,8 @@ Each is one measurement in dev, not a sustained SLO.
 | Data quality | dbt tests and Glue validations |
 | Alert delivery | CloudWatch alarms and EventBridge → SNS (KMS-encrypted topic; `dev/observability`, `dev/cdc`; ADR 0031) |
 | Failed-record management | Quarantine prefix with rejection reason |
-| Lineage | dbt manifests, source-to-model documentation |
-| Catalog governance | Glue metadata, classifications, owners |
+| Lineage | dbt manifests; `make lineage`: PostgreSQL table → Bronze prefix → Silver → Gold, with owners and classifications (ADR 0042) |
+| Catalog governance | Owner, classification, grain and description as Glue table metadata: Silver from the source contracts (daily maintenance job), Gold from dbt `persist_docs`; `make catalog-check` reports drift (ADR 0042) |
 | Replay and recovery | Immutable Bronze, checkpoints, targeted backfills |
 | Cost tracking | AWS Budgets and Cost Explorer |
 

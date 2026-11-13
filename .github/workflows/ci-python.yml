@@ -37,6 +37,8 @@ jobs:
       - run: uv sync --locked --group dbt
       - run: make dbt-parse
       - run: make dbt-compile
+      # Source-to-Gold lineage from the parsed manifest and the Silver specs (ADR 0042).
+      - run: make lineage
 
   test:
     name: test (pytest + PostgreSQL 17)

@@ -263,6 +263,16 @@ dbt-compile: ## dbt compile every model and test to SQL, offline: no warehouse q
 	PROCURELAKE_DBT_S3_DATA_DIR=s3://example-bucket/gold/ \
 	uv run --group dbt dbt compile $(DBT_DIRS) --no-introspect --no-populate-cache
 
+.PHONY: lineage
+lineage: dbt-parse ## Source-to-Gold lineage report (PostgreSQL → Bronze → Silver → Gold) into build/lineage/lineage.md, offline (ADR 0042)
+	uv run python -m procurelake.governance.cli lineage --manifest dbt/target/manifest.json --out build/lineage/lineage.md
+
+.PHONY: catalog-check
+catalog-check: dbt-parse ## Read-only: Silver and Gold Glue tables carry their contract / dbt owner, classification, grain and description (ADR 0042)
+	uv run python -m procurelake.governance.cli check --manifest dbt/target/manifest.json \
+	  --silver-database $$($(TFOUT) -raw silver_database_name) --gold-database $$($(TFOUT) -raw gold_database_name) \
+	  --role-arn $$($(TFOUT) -raw data_engineer_role_arn)
+
 .PHONY: dbt-build
 dbt-build: ## dbt build (Gold models + tests) on dev Athena as the data-engineer role [DBT_ARGS="--select ..."]
 	PROCURELAKE_DBT_S3_STAGING_DIR=s3://$(call BUCKET,artifacts)/athena_results/ \
