@@ -219,7 +219,7 @@ These sizes are starting workloads for reproducible benchmarking. They make no c
 
 The platform isn't complete until all of these pass, with automated integration tests and a small, reproducible e2e dataset. Unit tests alone are not enough.
 
-**Status 2026-11-12 (ADR 0041):** built. `make test-acceptance` runs the local tier (1, 4, 5, 6, 7, 10, 11): all pass, and CI runs them. `make test-acceptance-live` runs the live tier (2, 3, 8, 9, 12). Passing live: 9 and 12. Test 8 fails on dev's data, not on isolation: the CDC benchmarks cancelled every award, leaving three marts without Birch rows, and the exports are stale. Tests 2–3 need a CDC session, which also restores the data. Locations differ from the table for 7 (`tests/e2e/test_data_quality.py`) and 11 (local, with test doubles; live blocked on Bedrock).
+**Status 2026-11-13 (ADR 0041):** built. `make test-acceptance` runs the local tier (1, 4, 5, 6, 7, 10, 11): all pass, and CI runs them. `make test-acceptance-live` runs the live tier (2, 3, 8, 9, 12). All live tests pass (2026-11-13 CDC session): 2–3 (update and delete in Gold 3 min 37–38 s after commit), 8, 9 and 12. Run test 8 only while `cdc_processing` is idle; the export count check compares a daily snapshot with the live mart. Locations differ from the table for 7 (`tests/e2e/test_data_quality.py`) and 11 (local, with test doubles; live blocked on Bedrock).
 
 | # | Test | Action | Expected result | Test location |
 |---|---|---|---|---|
