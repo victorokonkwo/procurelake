@@ -72,7 +72,7 @@ Source: the ProcureLake "Principal Data Engineer Implementation Plan" and "Produ
 - `dbt-athena` on Athena engine version 3 with Iceberg table materializations.
 - Layers: staging → intermediate → core (dimensions, facts) → marts.
 - Models: see `docs/architecture/data_model.md` §4.
-- Incremental pattern: `materialized='incremental'`, `table_type='iceberg'`, `incremental_strategy='merge'`, with `unique_key` set. The lookback filter on `source_updated_at` is only a starting point. The real models must handle **deletes and replay explicitly**, and the lookback window must come from a documented late-arrival policy.
+- Incremental pattern: `materialized='incremental'`, `table_type='iceberg'`, `incremental_strategy='merge'`, with `unique_key` set. The lookback filter on `source_updated_at` is only a starting point. The real models must handle **deletes and replay explicitly**, and the lookback window must come from a documented late-arrival policy. **Policy: ADR 0043** (2026-11-13): ordering is resolved in Silver by source sequence; Gold recomputes from the full Silver state each run, so there is no lookback window; deletes are tombstones in Silver and removed in Gold.
 - Every model documents its grain, owner, freshness requirement, and tests.
 
 **B3. Completion gate**
