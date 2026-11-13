@@ -20,7 +20,8 @@ the late-arrival policy and materialization (8), delete semantics (9), and where
    - At around 6,000 rows a full rebuild is exact and handles deletes, and no lookback window
      is needed yet.
    - `incremental_strategy='merge'`, with a documented late-arrival policy, comes in Week 6
-     with CDC commit timestamps (open question 8 stays open for that).
+     with CDC commit timestamps (open question 8 stays open for that). *Resolved by ADR 0043:
+     no lookback window; Gold reads the full current Silver state each run.*
    - dbt-athena requires a unique location for Iceberg `table` builds because it swaps tables
      by rename. A rebuild deletes the previous location; this was verified in dev.
 3. **Why staging is ephemeral:** Athena stores views in Glue with Hive column types, and Hive
