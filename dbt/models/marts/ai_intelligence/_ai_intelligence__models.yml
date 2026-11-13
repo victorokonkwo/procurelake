@@ -13,6 +13,7 @@ models:
       grain: one row per document_id (its latest approved extraction)
       owner: data-platform
       freshness: "updated when a review is approved; rebuilt by every dbt run"
+      data_classification: public
     columns:
       - name: document_id
         data_tests: [unique, not_null]

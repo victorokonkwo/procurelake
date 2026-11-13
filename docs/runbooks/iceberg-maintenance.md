@@ -35,6 +35,8 @@ aws glue get-job-run --job-name procurelake-dev-iceberg-maintenance --run-id <id
 | `AccessDeniedException` / `ACCESS_DENIED` | IAM or Lake Formation on that table changed | Compare `local.maintenance_policy` in `infrastructure/live/dev/data_platform/main.tf` with the table's location and database |
 | `TABLE_NOT_FOUND` | A table in `maintenance_*_tables` was dropped or renamed | Fix the variable and plan/apply data_platform |
 
+The job also writes each Silver table's contract metadata to Glue after maintenance (ADR 0042). Those failures are under `catalog_failed` (`jq '.catalog[] | select(.status=="failed")'`). `still concurrently modified after 5 attempts` means a writer kept committing: rerun once it is idle. The catalog step never overwrites a commit, because each write is checked against the Glue table version it read. `make catalog-check` confirms the result.
+
 A table listed under `skipped` is **not** a failure: the CDC apply job held its DynamoDB lease,
 and the next run maintains it. If the same table is skipped every day, check for a lease that
 was never released:
