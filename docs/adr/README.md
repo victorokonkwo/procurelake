@@ -48,5 +48,6 @@ ADRs 0001–0012 record decisions the planning documents already made. ADRs 0015
 | 0040 | Batch ingestion and daily data-quality state machines: task runner on Fargate (ingestion role; data engineer for the Silver checks), allow-listed tasks, schedules, alerts | Accepted (deployed and run live 2026-11-12) | [0040-batch-ingestion-and-data-quality-orchestration.md](0040-batch-ingestion-and-data-quality-orchestration.md) |
 | 0041 | End-to-end acceptance suite (plan §3): local tier (PostgreSQL + Spark + test doubles) and live tier; Silver schema evolution for nullable contract additions | Accepted (local passing; live 2–3 and 8 wait on a CDC session) | [0041-acceptance-test-suite.md](0041-acceptance-test-suite.md) |
 | 0042 | Catalog governance: owners and classifications in Glue (Silver from the contracts, version-checked; Gold via dbt `persist_docs`), `make catalog-check`, source-to-Gold lineage (`make lineage`) | Accepted (offline; not yet deployed) | [0042-catalog-governance-and-lineage.md](0042-catalog-governance-and-lineage.md) |
+| 0043 | Late-arrival policy: ordering resolved in Silver by source sequence; Gold recomputed in full each run, no lookback window (open question 8) | Accepted | [0043-late-arrival-policy.md](0043-late-arrival-policy.md) |
 
 Update the **ADR file** column as each ADR is written.

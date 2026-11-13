@@ -12,7 +12,7 @@ These are decisions the planning documents **do not make**. Agents and contribut
 
 ## Data model
 7. ~~Full OLTP column lists~~ **Resolved: ADR 0016.**
-8. **Late-arrival policy:** the lookback window for incremental dbt models and how late or out-of-order CDC events are resolved (for example, ordering by source commit timestamp plus a tiebreaker). *Week 4 uses full Iceberg rebuilds (ADR 0026), so this is needed when incremental merge arrives with CDC in Week 6.*
+8. ~~Late-arrival policy~~ **Resolved: ADR 0043** (owner, 2026-11-13): ordering is resolved in Silver by source sequence (ADR 0028); Gold has no lookback window because every model reads the full current Silver state each run. Revisit when a full recompute no longer fits the CDC schedule.
 9. ~~Delete semantics in Gold~~ **Resolved: ADR 0026** (hard removal; history via Iceberg snapshots).
 10. **Exchange-rate source and conversion policy** for any cross-currency reporting.
 11. **Supplier canonicalization rules** for `dim_supplier` (one canonical supplier), especially across tenants and public reference data.
