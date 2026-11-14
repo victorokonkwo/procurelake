@@ -173,3 +173,48 @@ run "tenant_and_admin_roles_trust_only_named_principals" {
     error_message = "The admin role may be assumed only by the operator."
   }
 }
+
+# ADR 0049 (open question 38): tenants read Glue metadata only for the tenant-facing marts.
+run "tenant_catalog_reads_are_limited_to_the_tenant_facing_marts" {
+  command = apply
+
+  assert {
+    condition = alltrue([for p in aws_iam_role_policy.tenant : anytrue([for s in jsondecode(p.policy).Statement :
+      s.Sid == "ReadTenantFacingCatalog" && toset(s.Resource) == toset([
+        "arn:aws:glue:ca-central-1:123456789012:catalog",
+        "arn:aws:glue:ca-central-1:123456789012:database/procurelake_dev_gold",
+        "arn:aws:glue:ca-central-1:123456789012:table/procurelake_dev_gold/mart_awarded_value",
+        "arn:aws:glue:ca-central-1:123456789012:table/procurelake_dev_gold/mart_actual_spend",
+        "arn:aws:glue:ca-central-1:123456789012:table/procurelake_dev_gold/mart_procurement_cycle_time",
+        "arn:aws:glue:ca-central-1:123456789012:table/procurelake_dev_gold/mart_supplier_concentration",
+    ])])])
+    error_message = "Each tenant's Glue reads must name the catalog, the Gold database and exactly the four tenant-facing marts."
+  }
+  assert {
+    condition = alltrue([for p in aws_iam_role_policy.tenant : alltrue([for s in jsondecode(p.policy).Statement :
+      alltrue([for r in flatten([s.Resource]) : !(startswith(r, "arn:aws:glue:") && strcontains(r, "*"))])
+    ])])
+    error_message = "No tenant statement may use a wildcard Glue resource (table/<gold>/* exposed every Gold schema)."
+  }
+  assert {
+    condition = alltrue([for p in aws_iam_role_policy.tenant : alltrue([for s in jsondecode(p.policy).Statement :
+      alltrue([for a in flatten([s.Action]) : !startswith(a, "glue:") || s.Sid == "ReadTenantFacingCatalog"])
+    ])])
+    error_message = "Glue actions may appear only in the tenant-facing catalog statement."
+  }
+}
+
+run "tenant_catalog_reads_follow_the_filtered_tables" {
+  command = plan
+
+  variables {
+    filtered_tables = ["mart_awarded_value"]
+  }
+  assert {
+    condition = alltrue([for p in aws_iam_role_policy.tenant : anytrue([for s in jsondecode(p.policy).Statement :
+      s.Sid == "ReadTenantFacingCatalog" && length([for r in s.Resource : r if strcontains(r, ":table/")]) == 1 &&
+      contains(s.Resource, "arn:aws:glue:ca-central-1:123456789012:table/procurelake_dev_gold/mart_awarded_value")
+    ])])
+    error_message = "The visible tables must be exactly the tables granted through Lake Formation filters."
+  }
+}

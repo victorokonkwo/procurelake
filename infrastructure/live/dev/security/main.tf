@@ -26,6 +26,15 @@ locals {
   gold_db    = local.foundation.gold_database_name
   glue       = "arn:aws:glue:${var.region}:${var.aws_account_id}"
   filters    = { for pair in setproduct(var.tenants, var.filtered_tables) : "${pair[0]}/${pair[1]}" => { tenant = pair[0], table = pair[1] } }
+
+  # Tenant catalog visibility (ADR 0049): Glue reads on the catalog, the Gold database and the
+  # tenant-facing marts only, never table/<gold>/*. Facts and dimensions keep the account default
+  # IAM_ALLOWED_PRINCIPALS:ALL, so IAM alone decides their metadata access, and GetTables
+  # returns only the tables named here (Glue identity-based policy examples).
+  tenant_catalog_arns = concat(
+    ["${local.glue}:catalog", "${local.glue}:database/${local.gold_db}"],
+    [for t in var.filtered_tables : "${local.glue}:table/${local.gold_db}/${t}"],
+  )
 }
 
 data "terraform_remote_state" "data_platform" {
@@ -170,10 +179,11 @@ resource "aws_iam_role_policy" "tenant" {
         Resource = module.tenant_workgroup[each.value].workgroup_arn
       },
       {
-        Sid      = "ReadGoldCatalog"
+        # Only the tenant-facing marts: a tenant cannot read other Gold tables' names or schemas.
+        Sid      = "ReadTenantFacingCatalog"
         Effect   = "Allow"
         Action   = ["glue:GetDatabase", "glue:GetDatabases", "glue:GetTable", "glue:GetTables", "glue:GetPartitions"]
-        Resource = ["${local.glue}:catalog", "${local.glue}:database/${local.gold_db}", "${local.glue}:table/${local.gold_db}/*"]
+        Resource = local.tenant_catalog_arns
       },
       {
         # Lake Formation vends the data; cell-level filtered queries need the planning actions.
