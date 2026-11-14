@@ -70,3 +70,49 @@ def test_connection_errors_are_retried():
     with pytest.raises(HttpError, match="ConnectionError"):
         _client(sleeps).get(f"http://127.0.0.1:{port}/")
     assert len(sleeps) == 2
+
+
+def test_requests_are_paced_from_the_previous_start(httpserver):
+    httpserver.expect_request("/p").respond_with_data("{}", content_type="application/json")
+    now = {"t": 100.0}
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        now["t"] += seconds
+
+    client = HttpClient(sleep=sleep, min_interval_seconds=2.0, monotonic=lambda: now["t"])
+    client.get(httpserver.url_for("/p"))  # first request: no wait
+    now["t"] += 0.5  # the response took 0.5 s
+    client.get(httpserver.url_for("/p"))
+    now["t"] += 3.0  # slower than the interval: no wait
+    client.get(httpserver.url_for("/p"))
+    assert sleeps == [1.5]
+
+
+def test_pacing_also_spaces_retries():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    now = {"t": 0.0}
+    sleeps: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        now["t"] += seconds
+
+    client = HttpClient(
+        retry_policy=RetryPolicy(max_attempts=2, base_delay_seconds=0.1, max_delay_seconds=0.1),
+        sleep=sleep,
+        min_interval_seconds=5.0,
+        monotonic=lambda: now["t"],
+        timeout_seconds=2,
+    )
+    with pytest.raises(HttpError):
+        client.get(f"http://127.0.0.1:{port}/")
+    assert sum(sleeps) == pytest.approx(5.0)  # the 0.1 s backoff, then pacing tops it up to 5 s
+
+
+def test_negative_interval_is_rejected():
+    with pytest.raises(ValueError):
+        HttpClient(min_interval_seconds=-1)

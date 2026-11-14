@@ -14,6 +14,11 @@ API behaviour verified against the live API on 2026-11-10 that shapes this desig
   136 (11-05), 103 (11-06), then 0 for 11-07 to 11-09, versus thousands for older days. A day is
   therefore only collected once it is ``settle_days`` old (default 10). Batches forced earlier
   with ``allow_unsettled`` are recorded as ``window_settled=False`` and do not complete a window.
+* The API blocks a client that sends too many requests (observed 2026-11-13/14). After about
+  250 requests at 2 to 4 per second, from Fargate and from a workstation alike, it closes every
+  connection without a response, for about 5 minutes; then it serves again. No rate-limit
+  header is sent. So requests are paced (``REQUEST_INTERVAL_SECONDS``, at most 240 per 5
+  minutes) and a refused request waits long enough to outlast a block (``RETRY_POLICY``).
 
 Each batch covers one complete UTC day of ``last_modified_date``. It is reconciled against the
 count endpoint (queried before and after paging) and against the number of unique
@@ -28,6 +33,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
+from procurelake.common.retry import RetryPolicy
 from procurelake.ingestion.batch import code_version, new_batch_id
 from procurelake.ingestion.http import HttpClient, HttpError
 from procurelake.ingestion.landing import LandingStore, ObjectAlreadyExistsError
@@ -75,6 +81,20 @@ FIELDS = (
     "Place of Performance State Code",
     "Place of Performance Country Code",
 )
+
+
+# Pacing and retries for the public API (see the module docstring): one request per 1.25 s is
+# 240 per 5 minutes, under the ~250 at which the API blocked us; retries wait 1 to 5 minutes
+# (8 attempts: at least 7 minutes of waiting in all), longer than the ~5 minute block.
+REQUEST_INTERVAL_SECONDS = 1.25
+RETRY_POLICY = RetryPolicy(
+    max_attempts=8, base_delay_seconds=60.0, max_delay_seconds=300.0, min_delay_seconds=60.0
+)
+
+
+def usaspending_http_client() -> HttpClient:
+    """The HTTP client the connector uses against the live API."""
+    return HttpClient(retry_policy=RETRY_POLICY, min_interval_seconds=REQUEST_INTERVAL_SECONDS)
 
 
 @dataclass

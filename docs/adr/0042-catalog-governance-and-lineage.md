@@ -1,13 +1,15 @@
 # ADR 0042: Catalog governance (owners, classifications in Glue) and source-to-Gold lineage
 
-- **Status:** Accepted (built and unit-tested offline; not yet deployed or run live; see Consequences)
+- **Status:** Accepted (deployed; `make catalog-check` 18/18 OK on dev 2026-11-13. A defect found
+  live on 2026-11-14 is fixed in the maintenance job: see Consequences)
 - **Date:** 2026-11-13
 - **Implementation:**
   - `src/procurelake/governance/catalog.py`: Silver metadata from the source contracts, the
     version-checked Glue write, read-only drift checks for Silver and Gold
   - `src/procurelake/governance/lineage.py`: lineage from the dbt manifest plus the Silver specs
   - `src/procurelake/governance/cli.py`: `lineage` (offline) and `check` (read-only)
-  - `src/procurelake/lakehouse/maintenance_job.py`: a catalog step after Iceberg maintenance
+  - `src/procurelake/lakehouse/maintenance_job.py`: saves every maintained table's Glue
+    parameters, restores the ones Athena's commits drop, then syncs Silver from the contracts
   - dbt: `+persist_docs` in `dbt/dbt_project.yml`; `meta.data_classification` on every Gold model
   - Make: `lineage`, `catalog-check`; CI runs `make lineage` after `dbt compile`
   - Tests: `tests/unit/governance/`, `tests/unit/dbt/test_gold_governance.py`
@@ -71,9 +73,22 @@ could see them.
   from the Glue table versions. The window is small: dbt writes only when the docs change (first
   deploy, doc edits), and maintenance runs at 03:30. Deploy doc changes outside the maintenance
   window. Removing the risk would mean patching dbt-athena; not done.
+- **Athena maintenance drops Gold metadata (found live 2026-11-14).**
+  - What happened: `catalog-check` failed for the 4 Gold marts right after a maintenance run.
+    Their Glue entries kept only `metadata_location`, `previous_metadata_location` and
+    `table_type`; dbt's `owner`, `grain`, `freshness` and `data_classification` were gone, while
+    the description survived. Athena's `OPTIMIZE`/`VACUUM`/`SET TBLPROPERTIES` commits write a
+    Glue entry with Iceberg's parameters only.
+  - Silver hid the problem, because the catalog step rewrites it from the contracts. Gold had
+    nothing to rewrite it until the next `dbt build`. The 18/18 result of 2026-11-13 was taken
+    with dbt run after maintenance.
+  - Fix: before maintenance the job saves each table's non-Iceberg parameters and description;
+    after it, it writes back only the ones now missing, version-checked like the Silver write. A
+    value set meanwhile (a dbt run during maintenance) is kept, never rolled back.
 - The Silver write adds no Glue table version (`SkipArchive=True`). It writes once per table on
   the first sync, and again only when a contract's metadata changes.
-- Lineage covers the operational tables and the AI mart. USAspending and Canada contracts are not
-  in Silver yet (open question 34), so they appear only when they are.
+- Lineage covers the operational tables and the AI mart. USAspending is in Silver (ADR 0044) and
+  is covered by `catalog-check`, but no Gold model reads it yet, so it is not in the lineage
+  report. Canada contracts are not in Silver.
 - Published dbt docs (`dbt docs generate`) are still not built: they need a warehouse catalog
   query, and the Glue catalog plus `make lineage` now cover their governance purpose.
