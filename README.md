@@ -41,15 +41,15 @@ Figures above are measured results from dev. SLO targets in this repo are design
 
 ## Architecture
 
-The core data flow in dev (`ca-central-1`): the CDC, batch and Gold paths, numbered, with the legend at the bottom of the image. Drawn with [TerraVision](https://github.com/patrickchugh/terravision) from a curated graph of real dev resources and regenerated with `make diagrams`.
+What dev (`ca-central-1`) runs: the CDC, batch, Gold and document paths, numbered, with the legend at the bottom of the image. dbt runs as the dbt runner (dbt-athena on ECS Fargate), started by Step Functions, and builds Gold through Athena. Drawn with [TerraVision](https://github.com/patrickchugh/terravision) from a curated graph of real dev resources and regenerated with `make diagrams`.
 
 <p align="center">
   <a href="docs/architecture/diagrams/dev-platform.svg">
-    <img src="docs/architecture/diagrams/dev-platform.png" alt="ProcureLake dev architecture: RDS PostgreSQL to DMS to S3 Bronze, Glue jobs to Silver Iceberg, dbt on Athena to Gold" width="560">
+    <img src="docs/architecture/diagrams/dev-platform.png" alt="ProcureLake dev architecture: RDS PostgreSQL to DMS to S3 Bronze, Glue jobs to Silver Iceberg, dbt on ECS Fargate and Athena to Gold, Lake Formation to tenant workgroups, and contract documents through Textract and Bedrock to a review queue" width="560">
   </a>
 </p>
 
-The diagram was last updated on 2026-11-10. It does not yet draw components deployed since then: Step Functions, Lake Formation, the ECS Fargate runners, and the document intelligence path. `dev/cdc` (RDS, DMS, VPC) is disposable and runs only during CDC sessions. [`docs/architecture/overview.md`](docs/architecture/overview.md) describes the full architecture, and [`docs/architecture/diagrams/`](docs/architecture/diagrams/README.md) has per-stack diagrams and notes on how the combined one is built.
+The diagram was last updated on 2026-11-14. `dev/cdc` (RDS, DMS, VPC) is disposable and runs only during CDC sessions. [`docs/architecture/overview.md`](docs/architecture/overview.md) describes the full architecture, and [`docs/architecture/diagrams/`](docs/architecture/diagrams/README.md) has per-stack diagrams and notes on how the combined one is built.
 
 ## Core stack
 AWS (`ca-central-1`) · S3 · Apache Iceberg · AWS Glue (Spark + Data Catalog) · Amazon Athena (engine v3) · dbt (`dbt-athena`) · AWS DMS · RDS PostgreSQL · Step Functions · EventBridge · DynamoDB · ECS Fargate · Lake Formation · IAM · KMS · Secrets Manager · CloudWatch · SNS · Textract · Bedrock · Terraform · GitHub Actions (OIDC) · Python (uv, Ruff, pytest, Pydantic) · Docker.
