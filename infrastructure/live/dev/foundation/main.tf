@@ -82,13 +82,11 @@ module "iam" {
     module.catalog.bronze_database_name,
     module.catalog.silver_database_name,
     module.catalog.gold_database_name,
-    module.catalog.gold_staging_database_name,
     module.catalog.bench_silver_database_name,
     module.catalog.bench_gold_database_name,
   ]
   glue_writable_database_names = [
     module.catalog.gold_database_name,
-    module.catalog.gold_staging_database_name,
     module.catalog.bench_gold_database_name, # dbt builds the benchmark Gold (ADR 0034)
   ]
   # The dbt runner (ECS Fargate, ADR 0029) runs as the data engineer, like `make dbt-build`.

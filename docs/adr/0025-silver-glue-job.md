@@ -65,7 +65,8 @@ Glue 5.1 against dev Bronze, with the Silver tables queryable in Athena.
   PyPI each time a run started. Open question 32 was resolved by ADR 0048: the wheels are hosted
   in the artifacts bucket and installed with `--no-index`.
 - **Glue 6.0** is listed by the AWS Pricing API at $0.308/DPU-hour in ca-central-1, against
-  $0.44 for 5.1. Moving would change the runtime versions in ADR 0015 (open question 31).
+  $0.44 for 5.1. Moving would change the runtime versions in ADR 0015 (open question 31; the
+  owner chose to stay on 5.1, ADR 0047).
 - **Log encryption:** the log groups used CloudWatch default encryption, not the platform KMS
   key. Open question 33 was resolved by ADR 0048: a Glue security configuration encrypts job
   logs with the data key.

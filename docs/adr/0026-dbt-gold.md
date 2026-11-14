@@ -54,12 +54,14 @@ the late-arrival policy and materialization (8), delete semantics (9), and where
    - Actual spend is `paid_amount > 0` by month of `paid_at`. The source stores the cumulative
      amount paid and the latest payment time, not each payment.
    - Cycle time runs from `published_at` to `awarded_at`.
-   - `dim_supplier` is one row per supplier registration (no cross-tenant matching; open question 35).
+   - `dim_supplier` is one row per supplier registration (no cross-tenant matching, by owner decision: ADR 0047).
 9. **Catalog and IAM:**
    - Terraform creates the Glue databases `procurelake_<env>_gold` (at `s3://<lake>/gold/`) and
-     `procurelake_<env>_gold_staging`.
+     `procurelake_<env>_gold_staging`. *Superseded by ADR 0049: `gold_staging` was removed,
+     because staging is ephemeral and the database stayed empty.*
    - The data-engineer role gets Create/Update/DeleteTable and the table-version actions on those
-     two databases only, and no CreateDatabase.
+     two databases only, and no CreateDatabase. *Since ADR 0049: on `gold` only (and the bench
+     Gold database, ADR 0034).*
    - The dbt-athena docs give no IAM list, so the actions were taken from the Glue calls in the
      installed adapter's source. Lake Formation calls happen only when LF tags or grants are
      configured, and they are not.
@@ -70,6 +72,7 @@ the late-arrival policy and materialization (8), delete semantics (9), and where
 ## Consequences
 - **Evidence:** `docs/evidence/sprint1-week4-gold-live.md`.
 - `procurelake_dev_gold_staging` is empty now that staging is ephemeral (open question 36).
+  *Resolved by ADR 0049: the database and its grants are removed.*
 - dbt-athena's Iceberg `table` rebuild drops and re-creates the target, so a consumer querying
   during a build can briefly miss the table (dbt-athena docs). This is acceptable for dev.
   Week 6 incremental merges avoid it.

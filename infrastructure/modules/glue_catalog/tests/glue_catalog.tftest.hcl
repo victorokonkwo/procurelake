@@ -55,12 +55,12 @@ run "silver_database_lives_in_the_lake_bucket" {
   }
 }
 
-run "gold_databases_live_in_the_lake_bucket" {
+run "gold_database_lives_in_the_lake_bucket" {
   command = apply
 
   assert {
-    condition     = aws_glue_catalog_database.gold.name == "procurelake_dev_gold" && aws_glue_catalog_database.gold_staging.name == "procurelake_dev_gold_staging"
-    error_message = "Unexpected Gold database names."
+    condition     = aws_glue_catalog_database.gold.name == "procurelake_dev_gold"
+    error_message = "Unexpected Gold database name."
   }
   assert {
     condition     = aws_glue_catalog_database.gold.location_uri == "s3://procurelake-dev-lake-123456789012-ca-central-1/gold/"

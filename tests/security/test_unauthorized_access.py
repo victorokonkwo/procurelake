@@ -5,6 +5,8 @@ On the deployed dev environment (ADR 0008, ADR 0030), as each fictional tenant's
 * direct S3 reads and listings of the lakehouse and raw buckets are denied (Lake Formation does
   not govern S3, so this path is closed separately);
 * Gold tables that were not granted (facts, dimensions) are denied;
+* the Glue catalog shows a tenant only the tenant-facing marts: other Gold tables cannot be
+  described and are not listed (ADR 0049);
 * the other tenant's Athena workgroup cannot be used;
 * the other tenant's exports cannot be read or written, and no tenant can delete exports.
 
@@ -32,6 +34,32 @@ def test_tables_not_granted_fail(table, tenants, dev_env, evidence):
         evidence["checks"].append(
             {"check": "table_denied", "tenant": tenant, "table": table, "error": str(denied.value)[:200]}
         )
+
+
+def test_catalog_shows_only_tenant_facing_marts(tenants, dev_env, evidence):
+    """ADR 0049: a tenant can describe its marts, and not any other Gold table (names, schemas)."""
+    gold = dev_env["PROCURELAKE_DEV_GOLD_DATABASE"]
+    for tenant, ctx in tenants.items():
+        glue = ctx["session"].client("glue")
+        for mart in MARTS:
+            table = glue.get_table(DatabaseName=gold, Name=mart)["Table"]
+            columns = {c["Name"] for c in table["StorageDescriptor"]["Columns"]}
+            assert "tenant_id" in columns, f"{tenant} {mart}: schema not readable"
+        for table in NOT_GRANTED:
+            with pytest.raises(ClientError) as err:
+                glue.get_table(DatabaseName=gold, Name=table)
+            code = err.value.response["Error"]["Code"]
+            evidence["checks"].append(
+                {"check": "catalog_denied", "tenant": tenant, "table": table, "code": code}
+            )
+            assert code == "AccessDeniedException", f"{tenant} get_table {table}: {code}"
+        listed = {
+            t["Name"]
+            for page in glue.get_paginator("get_tables").paginate(DatabaseName=gold)
+            for t in page["TableList"]
+        }
+        evidence["checks"].append({"check": "catalog_listed", "tenant": tenant, "tables": sorted(listed)})
+        assert listed == set(MARTS), f"{tenant} get_tables listed {sorted(listed)}"
 
 
 def test_direct_s3_access_fails(tenants, dev_env, evidence):

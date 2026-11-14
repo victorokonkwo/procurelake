@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (owner decisions 2026-11-13; resolves open questions 30 and 34). Deployed
   and run live 2026-11-14: 51,712 awards from 6 settled days in Silver. Days over 50,000 records
-  still fail (see Consequences).
+  failed (see Consequences); fixed by keyset paging, ADR 0046.
 - **Date:** 2026-11-13
 - **Implementation:**
   - Contract: `contracts/reference/usaspending_contract_awards.yaml`, model
@@ -97,7 +97,7 @@ Facts the design rests on:
    - The step retries three times, 5 minutes apart and doubling, because the likely error is
      another run in progress. Then it alerts.
    - The daily maintenance compacts the table and syncs its catalog metadata (ADR 0033, 0042).
-9. **No Gold yet.** Whether public data joins tenant products is open question 12. dbt only tests
+9. **No Gold yet.** Public data is never joined into tenant products; it is admin-only (ADR 0047, open question 12). dbt only tests
    the Silver table as a source: unique and not-null key, not-null `last_modified_at`, currency
    USD.
 
@@ -121,7 +121,7 @@ Facts the design rests on:
   100 with HTTP 422: "over the maximum result limit 50000. Please provide the
   'last_record_sort_value' and 'last_record_unique_id' to paginate sequentially." 2026-10-29
   (121,674 records) stopped at 50,000 and was recorded as failed; 2026-10-30 (75,201) would too.
-  The connector pages by page number only. Paging by last record is not built yet; until it is,
-  each daily run retries these days and alerts.
+  *Resolved by ADR 0046 (2026-11-14): pages after the first are requested by keyset
+  (`last_record_sort_value`, `last_record_unique_id`).*
 - **Precision.** `numeric(23,2)` assumes the API publishes cents. A sub-cent amount is
   quarantined, and the batch gate shows it.
