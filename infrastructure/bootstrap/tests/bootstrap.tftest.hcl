@@ -120,4 +120,11 @@ run "deploy_role_is_scoped_not_admin" {
     !contains(s.Action, "glue:*")])
     error_message = "The deploy role manages the Glue security configuration (no resource type, ADR 0048) and nothing else of Glue unscoped."
   }
+  assert {
+    # DeleteDatabase needs the catalog, the database, its tables and its user-defined functions.
+    condition = anytrue([for s in jsondecode(aws_iam_role_policy.github_deploy_dev.policy).Statement :
+      s.Sid == "NamedResources" && contains(s.Action, "glue:*") &&
+    contains(s.Resource, "arn:aws:glue:ca-central-1:123456789012:userDefinedFunction/procurelake_dev_*/*")])
+    error_message = "The deploy role must be able to delete procurelake_dev_* Glue databases (their user-defined functions too)."
+  }
 }
