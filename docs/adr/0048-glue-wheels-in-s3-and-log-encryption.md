@@ -1,7 +1,11 @@
 # ADR 0048: Glue dependency wheels in S3, and Glue job logs encrypted with the data key
 
-- **Status:** Accepted (owner decision 2026-11-14; resolves open questions 32 and 33). Built and
-  tested offline; not deployed.
+- **Status:** Accepted (owner decision 2026-11-14; resolves open questions 32 and 33). Deployed to dev
+  2026-11-14 and verified live: run `jr_46a03a6d…` of `procurelake-dev-reference-to-silver`
+  succeeded (47 s). Its log, in the new KMS-encrypted group
+  `/aws-glue/jobs/procurelake-dev-glue-jobs-role/procurelake-dev-reference-to-silver/error`,
+  shows Glue downloading the bundle from S3, unzipping it and installing the procurelake wheel
+  and the six dependency wheels with `--no-index --no-deps`.
 - **Date:** 2026-11-14
 - **Implementation:**
   - Bundle builder: `src/procurelake/lakehouse/glue_dependencies.py` (standard library only),
