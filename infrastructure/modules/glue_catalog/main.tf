@@ -70,19 +70,14 @@ resource "aws_glue_catalog_database" "silver" {
   location_uri = "s3://${var.lake_bucket_name}/silver/"
 }
 
-# Gold: dbt on Athena (ADR 0005, ADR 0026). `gold` holds the governed dimensions, facts and marts;
-# `gold_staging` holds dbt's staging and intermediate views, kept apart so consumers are only
-# ever granted `gold`. dbt creates the tables; Terraform only owns the databases.
+# Gold: dbt on Athena (ADR 0005, ADR 0026). `gold` holds the governed dimensions, facts and marts.
+# dbt staging models are ephemeral (compiled into the Gold models as CTEs), so they need no
+# database; the empty `gold_staging` database was removed (ADR 0049). dbt creates the tables;
+# Terraform only owns the database.
 resource "aws_glue_catalog_database" "gold" {
   name         = "${var.name_prefix}_gold"
   description  = "ProcureLake ${var.environment} Gold: governed dimensions, facts and marts (dbt)."
   location_uri = "s3://${var.lake_bucket_name}/gold/"
-}
-
-resource "aws_glue_catalog_database" "gold_staging" {
-  name         = "${var.name_prefix}_gold_staging"
-  description  = "ProcureLake ${var.environment} dbt staging and intermediate views (not for consumers)."
-  location_uri = "s3://${var.lake_bucket_name}/gold_staging/"
 }
 
 # Benchmarks (ADR 0034): a scaled synthetic dataset is loaded here, never into the dev Silver

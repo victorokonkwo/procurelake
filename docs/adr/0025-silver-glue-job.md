@@ -61,7 +61,7 @@ Glue 5.1 against dev Bronze, with the Silver tables queryable in Athena.
 - **Cost:** the measured run cost is in the evidence. The pinned modules are downloaded from PyPI
   each time a run starts. Hosting dependency wheels in S3 is open question 32.
 - **Glue 6.0** is listed by the AWS Pricing API at $0.308/DPU-hour in ca-central-1, against
-  $0.44 for 5.1. Moving would change the runtime versions in ADR 0015 (open question 31).
+  $0.44 for 5.1. Moving would change the runtime versions in ADR 0015 (open question 31; the owner chose to stay on 5.1, ADR 0047).
 - **Log encryption:** the log groups use CloudWatch default encryption, not the platform KMS key
   (open question 33).
 - **Not covered:** USAspending is not built into Silver yet. This job covers the operational

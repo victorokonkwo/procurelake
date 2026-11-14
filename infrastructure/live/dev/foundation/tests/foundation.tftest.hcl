@@ -48,6 +48,10 @@ run "wires_catalog_and_workgroup" {
     error_message = "Gold database must be named procurelake_dev_gold."
   }
   assert {
+    condition     = !contains(keys(module.catalog), "gold_staging_database_name")
+    error_message = "The gold_staging database was removed (ADR 0049): dbt staging is ephemeral."
+  }
+  assert {
     condition     = output.athena_workgroup_name == "procurelake-dev-engineering"
     error_message = "Engineering workgroup must be named procurelake-dev-engineering."
   }

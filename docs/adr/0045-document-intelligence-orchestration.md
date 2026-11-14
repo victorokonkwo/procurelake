@@ -1,8 +1,8 @@
 # ADR 0045: Document intelligence state machine, started when a document lands
 
-- **Status:** Accepted (owner decision 2026-11-14; resolves open question 41). Built and tested
-  offline; not deployed. Live extraction is still blocked by the Bedrock quota (see
-  Consequences).
+- **Status:** Accepted (owner decision 2026-11-14; resolves open question 41). Deployed to dev
+  2026-11-14 (machine, EventBridge rule, alarm, task runner image `sha256:d0f08986…`; checked in
+  AWS). Live extraction is still blocked by the Bedrock quota (see Consequences).
 - **Date:** 2026-11-14
 - **Implementation:**
   - State machine: `orchestration/step_functions/document_intelligence.asl.json`
@@ -78,7 +78,7 @@ extraction remains blocked (Consequences).
   runner already has the network, logging and override pattern.
 
 ## Consequences
-- **Not deployed, and live extraction is still blocked.** On 2026-11-14 the account's quota for
+- **Live extraction is still blocked.** On 2026-11-14 the account's quota for
   Claude Haiku 5.5 through the Canada profile (Service Quotas `L-47520EB7`, "Cross-region model
   inference tokens per minute for Anthropic Claude Haiku 5.5") was **0**, as was the global
   profile's (`L-F26CA8D1`). The AWS default is 10,000,000, the quota is adjustable, and the model
