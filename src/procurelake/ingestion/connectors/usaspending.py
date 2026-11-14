@@ -1,15 +1,28 @@
 """USAspending.gov award search connector (public US federal awards).
 
 Endpoint contracts (fedspendingtransparency/usaspending-api, ``api_contracts``):
-  POST /api/v2/search/spending_by_award/        paged results (``limit`` <= 100, ``page``)
+  POST /api/v2/search/spending_by_award/        paged results (``limit`` <= 100, ``page``, or
+                                                ``last_record_sort_value`` + ``last_record_unique_id``)
   POST /api/v2/search/spending_by_award_count/  counts per award category for the same filters
 
 API behaviour verified against the live API on 2026-11-10 that shapes this design:
 * ``limit`` above 100 returns HTTP 422.
-* ``page_metadata.hasNext`` is ``false`` from page 100 onward even when more pages hold
-  data (a one-day window with 11,429 contracts returned full pages through page 114).
-  So paging continues until a page is shorter than ``limit``, and ``hasNext`` is ignored.
-* Sorting by ``generated_internal_id`` gives a total order, so pages don't overlap.
+* With ``page`` numbers, ``page_metadata.hasNext`` is ``false`` from page 100 onward even when
+  more pages hold data (a one-day window with 11,429 contracts returned full pages through page
+  114): the API computes it from Elasticsearch's hit total (``construct_es_response`` in
+  ``search/v2/views/spending_by_award.py``), which stops at 10,000 here.
+* Page numbers stop at 50,000 records: page 501 with limit 100 returns HTTP 422 ("over the
+  maximum result limit 50000. Please provide the 'last_record_sort_value' and
+  'last_record_unique_id' to paginate sequentially"; 2026-10-29 had 121,674 contracts).
+* Keyset paging (Elasticsearch ``search_after``): the request carries the last record's sort
+  value and unique id, and the API sorts on ``[sort field, award_id]``, so the order is total and
+  pages don't overlap. In this mode the API fetches ``limit + 1`` records, so ``hasNext`` is
+  exact. Each record carries both values: ``generated_internal_id`` (the sort value here) and
+  ``internal_id`` (the award id). Verified live on 2026-11-14: keyset page 2 returned the same
+  100 records as page number 2.
+* So page 1 is requested by number and every later page by keyset, with the cursor taken from
+  the previous page's last record (and checked against ``page_metadata`` when it gives one).
+  Paging ends at a short page or when a keyset page reports ``hasNext`` false.
 * Recent days are incomplete: on 2026-11-10 the per-day contract counts were 9,550 (11-04),
   136 (11-05), 103 (11-06), then 0 for 11-07 to 11-09, versus thousands for older days. A day is
   therefore only collected once it is ``settle_days`` old (default 10). Batches forced earlier
@@ -103,7 +116,9 @@ class UsaspendingConfig:
     award_type_codes: tuple[str, ...] = CONTRACT_AWARD_TYPES
     fields: tuple[str, ...] = FIELDS
     page_size: int = MAX_PAGE_SIZE
-    max_pages: int = 1_000
+    # A guard against a runaway loop, not a source limit: 5,000 pages of 100 is 500,000 records,
+    # about 4 times the largest day seen (121,674), and about 1 h 45 min at the paced rate.
+    max_pages: int = 5_000
     # Days a window must age before its data is treated as complete (see module docstring).
     settle_days: int = 10
 
@@ -151,8 +166,8 @@ class UsaspendingConnector:
             ],
         }
 
-    def _page_payload(self, day: date, page: int) -> dict:
-        return {
+    def _page_payload(self, day: date, page: int, cursor: tuple[str, int] | None = None) -> dict:
+        payload = {
             "filters": self._filters(day),
             "fields": list(self.config.fields),
             "limit": self.config.page_size,
@@ -161,6 +176,10 @@ class UsaspendingConnector:
             "order": "asc",
             "subawards": False,
         }
+        if cursor is not None:
+            # Keyset paging: the API ignores ``page`` when both values are given.
+            payload["last_record_sort_value"], payload["last_record_unique_id"] = cursor
+        return payload
 
     def _url(self, path: str) -> str:
         return f"{self.config.base_url.rstrip('/')}{path}"
@@ -243,6 +262,7 @@ class UsaspendingConnector:
                 "limit": self.config.page_size,
                 "sort": "generated_internal_id",
                 "order": "asc",
+                "pagination": PAGINATION,
             },
             files=state.files,
             reconciliation=Reconciliation(
@@ -262,8 +282,9 @@ class UsaspendingConnector:
 
     def _land_pages(self, day: date, prefix: str, state: _BatchState) -> None:
         url = self._url("/api/v2/search/spending_by_award/")
+        cursor: tuple[str, int] | None = None
         for page in range(1, self.config.max_pages + 1):
-            response = self.http.post_json(url, self._page_payload(day, page))
+            response = self.http.post_json(url, self._page_payload(day, page, cursor))
             body = response.json()
             results = body.get("results") if isinstance(body, dict) else None
             if not isinstance(results, list):
@@ -289,12 +310,42 @@ class UsaspendingConnector:
                     raise ValueError(f"page {page}: record without generated_internal_id")
                 state.ids.add(internal_id)
 
-            # hasNext is unreliable beyond page 99 (see module docstring): a short page ends paging.
+            # A short page ends paging. hasNext is trusted only on keyset pages, where it is exact
+            # (see module docstring); on page 1 it is ignored.
             if len(results) < self.config.page_size:
                 return
+            metadata = body.get("page_metadata") if isinstance(body.get("page_metadata"), dict) else {}
+            if cursor is not None and metadata.get("hasNext") is False:
+                return
+            cursor = _next_cursor(page, results, metadata, cursor)
+        raise ValueError(f"exceeded max_pages={self.config.max_pages} without reaching the last page")
+
+
+# Recorded in each manifest's request: how pages after the first were requested.
+PAGINATION = "page 1 by number; later pages by keyset (last_record_sort_value, last_record_unique_id)"
+
+
+def _next_cursor(
+    page: int, results: list[dict], metadata: dict, previous: tuple[str, int] | None
+) -> tuple[str, int]:
+    """The keyset cursor after a full page: its last record's sort value and award id.
+
+    Refuses a cursor that the API's own ``page_metadata`` contradicts, or that does not move
+    forward, so a misbehaving source fails the batch instead of looping or skipping records.
+    """
+    last = results[-1]
+    sort_value, unique_id = last.get("generated_internal_id"), last.get("internal_id")
+    if not isinstance(unique_id, int) or isinstance(unique_id, bool):
+        raise ValueError(f"page {page}: last record has no integer internal_id for keyset paging")
+    reported = (metadata.get("last_record_sort_value"), metadata.get("last_record_unique_id"))
+    if metadata.get("hasNext") is True and reported[1] is not None and reported != (sort_value, unique_id):
         raise ValueError(
-            f"exceeded max_pages={self.config.max_pages}; window too large for page-based collection"
+            f"page {page}: page_metadata cursor {reported} differs from the last record "
+            f"{(sort_value, unique_id)}"
         )
+    if previous is not None and sort_value <= previous[0]:
+        raise ValueError(f"page {page}: keyset cursor did not advance past {previous[0]!r}")
+    return sort_value, unique_id
 
 
 def pending_days(
