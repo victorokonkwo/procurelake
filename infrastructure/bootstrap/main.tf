@@ -294,6 +294,9 @@ locals {
         "arn:aws:glue:${local.rgn}:${local.acct}:catalog",
         "arn:aws:glue:${local.rgn}:${local.acct}:database/procurelake_dev_*",
         "arn:aws:glue:${local.rgn}:${local.acct}:table/procurelake_dev_*/*",
+        # Deleting a database also needs every user-defined function in it (Glue docs, "Specifying
+        # AWS Glue resource ARNs"); without it removing a database fails (2026-11-14, gold_staging).
+        "arn:aws:glue:${local.rgn}:${local.acct}:userDefinedFunction/procurelake_dev_*/*",
         "arn:aws:glue:${local.rgn}:${local.acct}:job/procurelake-dev-*",
         "arn:aws:athena:${local.rgn}:${local.acct}:workgroup/procurelake-dev-*",
         "arn:aws:states:${local.rgn}:${local.acct}:stateMachine:procurelake-dev-*",
