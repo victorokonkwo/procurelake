@@ -1,5 +1,5 @@
 {
-  "Comment": "CDC processing (ADR 0029): apply new Bronze CDC files to Silver (Glue), then rebuild Gold (dbt). Input: {\"dms_task_arn\": \"...\"}. Overlapping executions skip themselves; failures notify SNS.",
+  "Comment": "CDC processing (ADR 0029, ADR 0050): apply new Bronze CDC files to Silver (Glue), then build in Gold (dbt) only what is downstream of the Silver tables queued since the last successful build. Input: {\"dms_task_arn\": \"...\"}. Overlapping executions skip themselves; nothing queued skips dbt; failures notify SNS.",
   "StartAt": "CountRunningExecutions",
   "States": {
     "CountRunningExecutions": {
@@ -45,20 +45,70 @@
         }
       ],
       "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }],
+      "Next": "ReadGoldQueue"
+    },
+    "ReadGoldQueue": {
+      "Comment": "The apply job queues <silver table>#<batch id> in the same DynamoDB transaction that advances each checkpoint (ADR 0050). Entries stay until a build that included them succeeds.",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:getItem",
+      "Parameters": {
+        "TableName": "${checkpoint_table_name}",
+        "Key": { "pk": { "S": "gold#cdc" }, "sk": { "S": "pending" } },
+        "ConsistentRead": true
+      },
+      "ResultPath": "$.gold_queue",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }],
+      "Next": "AnythingQueued"
+    },
+    "AnythingQueued": {
+      "Type": "Choice",
+      "Choices": [
+        { "Variable": "$.gold_queue.Item.entries.SS", "IsPresent": true, "Next": "PrepareSelection" }
+      ],
+      "Default": "NothingToBuild"
+    },
+    "NothingToBuild": {
+      "Comment": "No Silver table changed since the last successful build: Gold is current, so dbt does not run.",
+      "Type": "Succeed"
+    },
+    "PrepareSelection": {
+      "Type": "Pass",
+      "Parameters": {
+        "entries.$": "$.gold_queue.Item.entries.SS",
+        "changed_silver.$": "States.JsonToString($.gold_queue.Item.entries.SS)"
+      },
+      "ResultPath": "$.selection",
       "Next": "TransformGold"
     },
     "TransformGold": {
+      "Comment": "The dbt runner builds source:silver.<table>+ for the queued tables (a full build past 40 entries).",
       "Type": "Task",
       "Resource": "arn:aws:states:::states:startExecution.sync:2",
       "Parameters": {
         "StateMachineArn": "${dbt_state_machine_arn}",
         "Input": {
           "run_id.$": "$$.Execution.Name",
+          "changed_silver.$": "$.selection.changed_silver",
           "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id"
         }
       },
       "ResultSelector": { "ExecutionArn.$": "$.ExecutionArn", "Status.$": "$.Status" },
       "ResultPath": "$.dbt",
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }],
+      "Next": "ClearBuiltEntries"
+    },
+    "ClearBuiltEntries": {
+      "Comment": "Remove exactly the entries this build covered. Entries queued while it ran have other batch ids and stay for the next run.",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${checkpoint_table_name}",
+        "Key": { "pk": { "S": "gold#cdc" }, "sk": { "S": "pending" } },
+        "UpdateExpression": "DELETE #e :built",
+        "ExpressionAttributeNames": { "#e": "entries" },
+        "ExpressionAttributeValues": { ":built": { "SS.$": "$.selection.entries" } }
+      },
+      "ResultPath": null,
       "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "NotifyFailure" }],
       "Next": "Succeeded"
     },

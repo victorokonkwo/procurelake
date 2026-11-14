@@ -65,7 +65,7 @@ run "phase_one_has_no_dms_alarms" {
   command = apply
 
   assert {
-    condition     = length(aws_cloudwatch_metric_alarm.dms_source_latency) == 0 && length(aws_cloudwatch_event_rule.dms_task_state) == 0
+    condition     = length(aws_cloudwatch_metric_alarm.dms_source_latency) == 0 && length(aws_cloudwatch_event_rule.dms_task_state) == 0 && length(aws_cloudwatch_event_rule.dms_task_stopped) == 0
     error_message = "Without a DMS task there is nothing to monitor (and nothing must alarm)."
   }
 }
@@ -78,8 +78,21 @@ run "phase_two_alarms_on_a_stalled_or_stopped_task" {
   }
 
   assert {
-    condition     = aws_cloudwatch_metric_alarm.dms_source_latency[0].treat_missing_data == "breaching" && aws_cloudwatch_metric_alarm.dms_source_latency[0].threshold == 300
-    error_message = "A stopped task publishes no metrics: missing data must alarm, like latency over 5 minutes."
+    condition     = aws_cloudwatch_metric_alarm.dms_source_latency[0].treat_missing_data == "missing" && aws_cloudwatch_metric_alarm.dms_source_latency[0].threshold == 300
+    error_message = "Latency over 5 minutes alarms; missing data is not an alarm (no ALARM at stack creation; a stop alerts through the stopped rule, ADR 0050)."
+  }
+  assert {
+    condition = (
+      jsondecode(aws_cloudwatch_event_rule.dms_task_stopped[0].event_pattern).source == ["aws.dms"]
+      && jsondecode(aws_cloudwatch_event_rule.dms_task_stopped[0].event_pattern)["detail-type"] == ["DMS Replication Task State Change"]
+      && jsondecode(aws_cloudwatch_event_rule.dms_task_stopped[0].event_pattern).resources == ["arn:aws:dms:ca-central-1:123456789012:task:MOCKTASKRESOURCEID"]
+      && contains(jsondecode(aws_cloudwatch_event_rule.dms_task_stopped[0].event_pattern).detail["$or"], { eventId = ["DMS-EVENT-0079", "DMS-EVENT-0078"] })
+    )
+    error_message = "The stopped rule matches this task's stop (DMS-EVENT-0079) and failure (DMS-EVENT-0078) events."
+  }
+  assert {
+    condition     = aws_cloudwatch_event_target.dms_task_stopped[0].arn == "arn:aws:sns:ca-central-1:123456789012:procurelake-dev-pipeline-alerts" && startswith(aws_cloudwatch_event_rule.dms_task_stopped[0].name, "procurelake-dev-")
+    error_message = "The stopped rule publishes to the alerts topic, whose policy admits rules named procurelake-dev-*."
   }
   assert {
     condition     = aws_cloudwatch_metric_alarm.dms_source_latency[0].dimensions["ReplicationTaskIdentifier"] == "MOCKTASKRESOURCEID"

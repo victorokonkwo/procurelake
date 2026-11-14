@@ -26,6 +26,7 @@ import psycopg
 from procurelake.cdc.checkpoint import CheckpointStore
 from procurelake.cdc.verify import check_layers
 from procurelake.common.aws_clients import DEFAULT_REGION, build_session
+from procurelake.common.rds_tls import rds_conninfo
 from procurelake.data_generator.workload import run_workload
 
 EVIDENCE = Path(__file__).resolve().parents[2] / "build" / "evidence"
@@ -79,10 +80,8 @@ def main(argv: list[str] | None = None) -> int:
     master = json.loads(
         session.client("secretsmanager").get_secret_value(SecretId=args.master_secret_arn)["SecretString"]
     )
-    dsn = psycopg.conninfo.make_conninfo(
-        host=args.host, port=args.port, dbname=args.database, user=master["username"],
-        password=master["password"], sslmode="require", connect_timeout=15,
-    )  # fmt: skip
+    # verify-full against the pinned RDS CA bundle (ADR 0050).
+    dsn = rds_conninfo(args.host, args.port, args.database, master["username"], master["password"])
 
     started = datetime.now(UTC)
     before = checkpoints.checkpoint("silver_invoices")

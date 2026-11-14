@@ -7,6 +7,12 @@ One DynamoDB table, keyed by ``pk`` (the Silver table) and ``sk``:
   never apply to the same Silver table at once (open question 15, owner decision).
 * ``sk = "file#<bronze key>"``: one item per Bronze CDC file that has been applied.
 * ``sk = "checkpoint"``: the last successful apply (batch, sequence, file count).
+* ``pk = "gold#cdc", sk = "pending"``: the Gold build queue of the CDC pipeline (ADR 0050). A
+  string set ``entries`` of ``<silver table>#<batch id>``, one per applied batch, added in the
+  **same transaction** that advances the checkpoint. ``cdc_processing`` reads it, builds only
+  the dbt models downstream of those tables, and removes exactly the entries it read once that
+  build succeeded. A failed build leaves them for the next run, and an entry added while a build
+  runs (another batch id) is never removed by it.
 
 File and checkpoint items are written **only after** the Iceberg write and its validation have
 succeeded (AGENTS.md section 2.5). If a run dies before that, the next run re-reads the same
@@ -24,6 +30,15 @@ from botocore.exceptions import ClientError
 LEASE_SK = "lease"
 CHECKPOINT_SK = "checkpoint"
 FILE_PREFIX = "file#"
+GOLD_PENDING_KEY = {"pk": {"S": "gold#cdc"}, "sk": {"S": "pending"}}
+GOLD_PENDING_ATTRIBUTE = "entries"
+
+
+def gold_pending_entry(silver_table: str, batch_id: str) -> str:
+    """Queue entry for one applied batch: ``<silver table>#<batch id>``."""
+    if not silver_table or not batch_id or "#" in silver_table or "#" in batch_id:
+        raise ValueError(f"invalid queue entry parts {silver_table!r}, {batch_id!r}")
+    return f"{silver_table}#{batch_id}"
 
 
 class LeaseHeldError(RuntimeError):
@@ -101,7 +116,9 @@ class CheckpointStore:
         Every write is a DynamoDB transaction that also checks this writer still holds an
         unexpired lease, so a writer whose lease was taken over cannot advance the checkpoint.
         Files go first and the checkpoint last; a crash in between only means the same files are
-        re-read next time, and the idempotent apply makes that a no-op.
+        re-read next time, and the idempotent apply makes that a no-op. The checkpoint's
+        transaction also queues the table for the next Gold build (``gold#cdc`` / ``pending``),
+        so a batch is never in Silver without being queued.
         """
         now = int(self._clock())
         stamp = datetime.now(UTC).isoformat()
@@ -144,14 +161,35 @@ class CheckpointStore:
                 }
             }
         )
-        chunk = 99  # TransactWriteItems allows 100 actions; one is the lease check
+        queue = {
+            "Update": {
+                "TableName": self._table,
+                "Key": GOLD_PENDING_KEY,
+                "UpdateExpression": "ADD #e :entry",
+                "ExpressionAttributeNames": {"#e": GOLD_PENDING_ATTRIBUTE},
+                "ExpressionAttributeValues": {":entry": {"SS": [gold_pending_entry(lease.table, batch_id)]}},
+            }
+        }
+        # TransactWriteItems allows 100 actions: one is the lease check, and the last
+        # transaction also carries the queue update next to the checkpoint.
+        chunk = 98
         try:
             for start in range(0, len(puts), chunk):
-                self._ddb.transact_write_items(TransactItems=[lease_check, *puts[start : start + chunk]])
+                items = [lease_check, *puts[start : start + chunk]]
+                if start + chunk >= len(puts):
+                    items.append(queue)
+                self._ddb.transact_write_items(TransactItems=items)
         except ClientError as exc:
             if exc.response["Error"]["Code"] == "TransactionCanceledException":
                 raise LeaseHeldError(f"{lease.table}: lease lost before the checkpoint was written") from exc
             raise
+
+    def gold_pending(self) -> set[str]:
+        """Entries queued for the next CDC Gold build (strongly consistent read)."""
+        item = self._ddb.get_item(TableName=self._table, Key=GOLD_PENDING_KEY, ConsistentRead=True).get(
+            "Item"
+        )
+        return set(item[GOLD_PENDING_ATTRIBUTE]["SS"]) if item and GOLD_PENDING_ATTRIBUTE in item else set()
 
     def checkpoint(self, silver_table: str) -> dict | None:
         item = self._ddb.get_item(

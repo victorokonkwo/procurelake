@@ -40,7 +40,10 @@ owner decided on 2026-11-10:
       another is running. A 5-minute schedule can overlap a slow run, and Glue allows one run.
    2. Run the Glue CDC apply (`glue:startJobRun.sync`), retried once (safe because it is
       idempotent, ADR 0028).
-   3. Run `dbt_transformation` as a nested execution (`startExecution.sync:2`).
+   3. Run `dbt_transformation` as a nested execution (`startExecution.sync:2`). Since ADR 0050
+      (open question 40) it builds only the models downstream of the Silver tables queued since
+      the last successful build, skips dbt when nothing is queued, and a daily schedule keeps a
+      full build.
    4. Any error publishes to the SNS topic `procurelake-dev-pipeline-alerts` (KMS-encrypted) and
       ends in `Fail`.
 6. **Schedule.** EventBridge Scheduler `rate(5 minutes)`, with the flexible window off. It is

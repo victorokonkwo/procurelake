@@ -91,13 +91,17 @@ resource "aws_cloudwatch_metric_alarm" "state_machine_failed" {
 # Metrics Insights queries aggregate across every Silver table (dimension Table).
 resource "aws_cloudwatch_metric_alarm" "cdc_freshness" {
   alarm_name          = "${local.name}-cdc-source-to-silver-latency"
-  alarm_description   = "A CDC batch reached Silver more than ${var.freshness_threshold_seconds} s after its oldest source commit (C5 gate: 15 min to Gold). Runbook: docs/runbooks/pipeline-alarms.md, row cdc-source-to-silver-latency"
+  alarm_description   = "A CDC batch reached Silver more than ${var.freshness_threshold_seconds} s after its oldest source commit (C5 gate: 15 min to Gold). OK only means time passed: with no newer batch the alarm clears by itself about 15 minutes after a late one (Week 8 drill), so OK does not mean a later batch arrived or was on time. Check SourceToSilverSeconds datapoints after the alarm (ADR 0050). Runbook: docs/runbooks/pipeline-alarms.md, row cdc-source-to-silver-latency"
   comparison_operator = "GreaterThanThreshold"
   threshold           = var.freshness_threshold_seconds
   evaluation_periods  = 1
-  treat_missing_data  = "notBreaching" # no batch = nothing applied (quiet source or DMS stall: see dev/cdc alarms)
-  alarm_actions       = [local.alerts_arn]
-  ok_actions          = [local.alerts_arn]
+  # No batch = nothing applied (quiet source or DMS stall: see the dev/cdc alarms). The same
+  # setting makes OK carry no information (open question 39c, ADR 0050): consistent with the
+  # documented missing-data handling, once the late batch's datapoint leaves the evaluation
+  # range the missing periods count as not breaching and the alarm returns to OK.
+  treat_missing_data = "notBreaching"
+  alarm_actions      = [local.alerts_arn]
+  ok_actions         = [local.alerts_arn]
 
   metric_query {
     id          = "latency"

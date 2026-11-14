@@ -31,6 +31,7 @@ from psycopg.rows import dict_row
 
 from procurelake.common.athena import run_query
 from procurelake.common.aws_clients import DEFAULT_REGION, build_session
+from procurelake.common.rds_tls import rds_conninfo
 from procurelake.operations import demo
 
 STATE = Path(__file__).resolve().parents[2] / "build" / "demo" / "award.json"
@@ -59,10 +60,9 @@ def _pg(args, session):
     secret = json.loads(
         session.client("secretsmanager").get_secret_value(SecretId=args.master_secret_arn)["SecretString"]
     )
-    return psycopg.connect(
-        host=args.host, port=args.port, dbname=args.database, user=secret["username"],
-        password=secret["password"], sslmode="require", connect_timeout=15, row_factory=dict_row,
-    )  # fmt: skip
+    # verify-full against the pinned RDS CA bundle (ADR 0050).
+    dsn = rds_conninfo(args.host, args.port, args.database, secret["username"], secret["password"])
+    return psycopg.connect(dsn, row_factory=dict_row)
 
 
 def step_show(args, session) -> None:

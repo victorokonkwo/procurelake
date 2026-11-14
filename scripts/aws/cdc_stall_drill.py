@@ -7,13 +7,17 @@ checkpoint without losing or duplicating changes.
 
 1. Stop the DMS task (``StopReplicationTask``), as an operator mistake or an outage would.
 2. Commit a workload on the source **during** the stall: these changes cannot reach Bronze.
-3. Detection: wait for the ``dms-source-latency`` alarm to enter ALARM. Meanwhile, record that
-   scheduled ``cdc_processing`` executions still SUCCEED and that the stall changes are absent
-   from Silver (the failure is silent to the pipeline).
+3. Detection (ADR 0050): wait until the ``dms-task-stopped`` EventBridge rule has matched the
+   stop and invoked its SNS target (``AWS/Events`` ``MatchedEvents`` and ``Invocations`` for the
+   rule, ``FailedInvocations`` 0). Since ADR 0050 the latency alarm treats missing data as
+   missing, so a stopped task leaves it in INSUFFICIENT_DATA, not ALARM; its state is recorded.
+   Meanwhile, record that scheduled ``cdc_processing`` executions still SUCCEED and that the
+   stall changes are absent from Silver (the failure is silent to the pipeline).
 4. Recovery: ``StartReplicationTask`` with ``resume-processing`` (DMS resumes from the point it
    stopped, its own checkpoint), then wait until every stall change is correct in Silver and in
    Gold (scheduled runs only, nothing applied by hand).
-5. Wait for the alarm to return to OK, and count alert messages in the window.
+5. Wait for the latency alarm to return to OK (DMS metrics flowing again), and count alert
+   messages in the window.
 
 Evidence: build/evidence/cdc_stall_drill_<start>.json. Synthetic data only.
 """
@@ -31,6 +35,7 @@ import psycopg
 
 from procurelake.cdc.verify import check_layers
 from procurelake.common.aws_clients import DEFAULT_REGION, build_session
+from procurelake.common.rds_tls import rds_conninfo
 from procurelake.data_generator.workload import run_workload
 
 EVIDENCE = Path(__file__).resolve().parents[2] / "build" / "evidence"
@@ -59,6 +64,20 @@ def _alarm_state(cw, name: str) -> str:
     return cw.describe_alarms(AlarmNames=[name])["MetricAlarms"][0]["StateValue"]
 
 
+def _rule_sum(cw, rule: str, metric: str, since: datetime) -> float:
+    """Sum of an AWS/Events rule metric since ``since`` (per-minute datapoints, best effort)."""
+    points = cw.get_metric_statistics(
+        Namespace="AWS/Events",
+        MetricName=metric,
+        Dimensions=[{"Name": "RuleName", "Value": rule}],
+        StartTime=since - timedelta(minutes=1),
+        EndTime=_now() + timedelta(minutes=1),
+        Period=60,
+        Statistics=["Sum"],
+    )["Datapoints"]
+    return sum(d["Sum"] for d in points)
+
+
 def _executions(sfn, arn: str, since: datetime) -> list[dict]:
     pages = sfn.get_paginator("list_executions").paginate(stateMachineArn=arn)
     return [e for p in pages for e in p["executions"] if e["startDate"] >= since]
@@ -67,7 +86,8 @@ def _executions(sfn, arn: str, since: datetime) -> list[dict]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     required = [
-        "host", "database", "master-secret-arn", "task-arn", "alarm-name", "state-machine-arn",
+        "host", "database", "master-secret-arn", "task-arn", "alarm-name", "stopped-rule-name",
+        "state-machine-arn",
         "alerts-topic-arn", "engineer-role-arn", "workgroup", "silver-database", "gold-database",
     ]  # fmt: skip
     for name in required:
@@ -87,10 +107,8 @@ def main(argv: list[str] | None = None) -> int:
         "SecretString"
     ]
     master = json.loads(secret)
-    dsn = psycopg.conninfo.make_conninfo(
-        host=args.host, port=args.port, dbname=args.database, user=master["username"],
-        password=master["password"], sslmode="require", connect_timeout=15,
-    )  # fmt: skip
+    # verify-full against the pinned RDS CA bundle (ADR 0050).
+    dsn = rds_conninfo(args.host, args.port, args.database, master["username"], master["password"])
     layers = (athena, args.workgroup, args.silver_database, args.gold_database)
 
     if _task_status(dms, args.task_arn) != "running":
@@ -114,13 +132,28 @@ def main(argv: list[str] | None = None) -> int:
     record["stall_changes_committed_at"] = max(c.committed_at for c in workload.changes).isoformat()
     print(f"committed {len(workload.changes)} changes during the stall", flush=True)
 
-    # 3. Detection.
-    _wait(lambda: _alarm_state(cw, args.alarm_name) == "ALARM", "the latency alarm", 1800)
+    # 3. Detection: the stopped rule (ADR 0050). Its metrics are per minute and best effort, so
+    # the measured time is when the datapoint became visible, an upper bound on delivery.
+    # A timeout is a drill failure, not a reason to leave DMS stopped: record it and recover.
+    stopped_at = datetime.fromisoformat(record["task_stopped_at"])
+    try:
+        _wait(
+            lambda: _rule_sum(cw, args.stopped_rule_name, "Invocations", stopped_at) >= 1,
+            "the task-stopped rule to invoke its SNS target",
+            1200,
+        )
+        record["stopped_rule_alerted"] = True
+    except TimeoutError as exc:
+        print(f"DRILL FAILURE: {exc}; resuming DMS anyway", flush=True)
+        record["stopped_rule_alerted"] = False
     detected = _now()
-    record["alarm_at"] = detected.isoformat()
-    record["time_to_detect_s"] = round(
-        (detected - datetime.fromisoformat(record["task_stopped_at"])).total_seconds()
+    record["alarm_at"] = detected.isoformat() if record["stopped_rule_alerted"] else None
+    record["time_to_detect_s"] = round((detected - stopped_at).total_seconds())
+    record["stopped_rule_matched_events"] = _rule_sum(cw, args.stopped_rule_name, "MatchedEvents", stopped_at)
+    record["stopped_rule_failed_invocations"] = _rule_sum(
+        cw, args.stopped_rule_name, "FailedInvocations", stopped_at
     )
+    record["latency_alarm_state_at_detection"] = _alarm_state(cw, args.alarm_name)
     during = _executions(sfn, args.state_machine_arn, datetime.fromisoformat(record["task_stopped_at"]))
     record["scheduled_runs_during_stall"] = {
         s: sum(1 for e in during if e["status"] == s) for s in ("SUCCEEDED", "FAILED", "RUNNING")
@@ -128,7 +161,12 @@ def main(argv: list[str] | None = None) -> int:
     silver_bad, _gold_bad = check_layers(*layers, workload.changes)
     record["stall_changes_missing_from_silver_at_detection"] = len(silver_bad)
     runs = record["scheduled_runs_during_stall"]
-    print(f"alarm after {record['time_to_detect_s']} s; scheduled runs during the stall: {runs}", flush=True)
+    print(
+        f"stopped rule delivered within {record['time_to_detect_s']} s "
+        f"(latency alarm {record['latency_alarm_state_at_detection']}); "
+        f"scheduled runs during the stall: {runs}",
+        flush=True,
+    )
 
     # 4. Recovery from DMS's checkpoint.
     dms.start_replication_task(ReplicationTaskArn=args.task_arn, StartReplicationTaskType="resume-processing")
@@ -149,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # 5. All clear.
-    _wait(lambda: _alarm_state(cw, args.alarm_name) == "OK", "the alarm to clear", 1800)
+    _wait(lambda: _alarm_state(cw, args.alarm_name) == "OK", "the latency alarm to return to OK", 1800)
     record["alarm_ok_at"] = _now().isoformat()
     time.sleep(60)
     published = cw.get_metric_statistics(
@@ -172,7 +210,10 @@ def main(argv: list[str] | None = None) -> int:
     ok = (
         record["stall_changes_missing_from_silver_at_detection"] > 0
         and record["scheduled_runs_during_stall"]["SUCCEEDED"] > 0
-        and record["sns_messages_published_in_window"] >= 2  # ALARM and OK at least
+        and record["stopped_rule_alerted"]
+        and record["stopped_rule_failed_invocations"] == 0
+        # The stopped alarm, plus the informational stop and resume events at least.
+        and record["sns_messages_published_in_window"] >= 2
     )
     return 0 if ok else 1
 

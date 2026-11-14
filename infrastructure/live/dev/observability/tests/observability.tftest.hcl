@@ -55,6 +55,10 @@ run "cdc_freshness_uses_the_15_minute_gate" {
   command = apply
 
   assert {
+    condition     = strcontains(aws_cloudwatch_metric_alarm.cdc_freshness.alarm_description, "OK only means time passed") && aws_cloudwatch_metric_alarm.cdc_freshness.treat_missing_data == "notBreaching"
+    error_message = "The freshness alarm's description must say its OK does not mean a newer batch arrived (open question 39c, ADR 0050)."
+  }
+  assert {
     condition     = aws_cloudwatch_metric_alarm.cdc_freshness.threshold == 900 && strcontains(one(aws_cloudwatch_metric_alarm.cdc_freshness.metric_query).expression, "MAX(SourceToSilverSeconds)")
     error_message = "Freshness alarms above 900 s on the worst table."
   }
