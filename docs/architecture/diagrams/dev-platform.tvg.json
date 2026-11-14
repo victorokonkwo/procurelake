@@ -1,15 +1,21 @@
 {
   "tv_aws_onprem.operator_workstation": [
-    "tv_aws_client.ingestion_cli"
+    "aws_iam_role.data_engineer",
+    "aws_iam_role.ingestion",
+    "aws_iam_role.ai_extraction"
   ],
   "tv_aws_server.usaspending_api": [
-    "tv_aws_client.ingestion_cli"
+    "aws_ecs_cluster.task_runner"
   ],
-  "tv_aws_client.ingestion_cli": [
+  "tv_aws_server.canada_open_data": [
+    "aws_ecs_cluster.task_runner"
+  ],
+  "tv_aws_server.public_contract_pdfs": [
     "aws_iam_role.ingestion"
   ],
   "aws_iam_role.ingestion": [
-    "aws_s3_bucket.raw"
+    "aws_s3_bucket.raw",
+    "aws_s3_bucket.artifacts"
   ],
   "aws_vpc.cdc": [
     "tv_aws_az.cac1_az1",
@@ -47,15 +53,58 @@
   "aws_vpc_endpoint.s3": [
     "aws_s3_bucket.raw"
   ],
+  "aws_scheduler_schedule.cdc_processing": [
+    "aws_sfn_state_machine.cdc_processing"
+  ],
+  "aws_sfn_state_machine.cdc_processing": [
+    "aws_glue_job.apply_cdc",
+    "aws_sfn_state_machine.dbt_transformation"
+  ],
+  "aws_scheduler_schedule.dbt_full_build": [
+    "aws_sfn_state_machine.dbt_transformation"
+  ],
+  "aws_sfn_state_machine.dbt_transformation": [
+    "aws_ecs_cluster.dbt_runner"
+  ],
+  "aws_scheduler_schedule.batch": [
+    "aws_sfn_state_machine.batch_ingestion"
+  ],
+  "aws_sfn_state_machine.batch_ingestion": [
+    "aws_ecs_cluster.task_runner",
+    "aws_glue_job.reference_to_silver"
+  ],
+  "aws_ecs_cluster.task_runner": [
+    "aws_s3_bucket.raw",
+    "tv_aws_server.textract",
+    "tv_aws_server.bedrock",
+    "aws_dynamodb_table.ai_review"
+  ],
   "aws_s3_bucket.raw": [
     "aws_glue_job.bronze_to_silver",
-    "aws_glue_job.apply_cdc"
+    "aws_glue_job.apply_cdc",
+    "aws_glue_job.reference_to_silver"
   ],
+  "aws_cloudwatch_event_rule.document_landed": [
+    "aws_sfn_state_machine.document_intelligence"
+  ],
+  "aws_sfn_state_machine.document_intelligence": [
+    "aws_ecs_cluster.task_runner"
+  ],
+  "aws_dynamodb_table.ai_review": [],
   "aws_glue_job.apply_cdc": [
     "aws_dynamodb_table.cdc_checkpoints",
     "aws_s3_bucket.lake"
   ],
   "aws_glue_job.bronze_to_silver": [
+    "aws_s3_bucket.lake"
+  ],
+  "aws_glue_job.reference_to_silver": [
+    "aws_s3_bucket.lake"
+  ],
+  "aws_scheduler_schedule.iceberg_maintenance": [
+    "aws_glue_job.iceberg_maintenance"
+  ],
+  "aws_glue_job.iceberg_maintenance": [
     "aws_s3_bucket.lake"
   ],
   "aws_s3_bucket.lake": [
@@ -64,24 +113,50 @@
   "aws_glue_catalog_database.silver": [
     "aws_athena_workgroup.engineering"
   ],
-  "aws_athena_workgroup.engineering": [
-    "aws_glue_catalog_database.gold",
-    "aws_s3_bucket.artifacts"
-  ],
-  "tv_aws_users.data_engineer": [
-    "aws_iam_role.data_engineer"
+  "aws_ecs_cluster.dbt_runner": [
+    "aws_athena_workgroup.engineering"
   ],
   "aws_iam_role.data_engineer": [
     "aws_athena_workgroup.engineering"
   ],
+  "aws_athena_workgroup.engineering": [
+    "aws_glue_catalog_database.gold",
+    "aws_s3_bucket.artifacts"
+  ],
+  "aws_glue_catalog_database.gold": [
+    "aws_lakeformation_resource.gold"
+  ],
+  "aws_lakeformation_resource.gold": [
+    "aws_athena_workgroup.tenant"
+  ],
+  "aws_athena_workgroup.tenant": [
+    "tv_aws_users.tenants"
+  ],
+  "aws_scheduler_schedule.exports": [
+    "aws_sfn_state_machine.exports"
+  ],
+  "aws_sfn_state_machine.exports": [
+    "aws_s3_bucket.products"
+  ],
   "aws_group.shared_services": [
     "aws_kms_key.data",
+    "aws_sns_topic.pipeline_alerts",
+    "aws_cloudwatch_dashboard.operations",
     "aws_cloudwatch_log_group.glue_jobs"
   ],
-  "aws_glue_catalog_database.gold": [],
+  "tv_aws_server.textract": [],
+  "tv_aws_server.bedrock": [],
+  "tv_aws_users.tenants": [],
   "aws_dynamodb_table.cdc_checkpoints": [],
   "aws_secretsmanager_secret.dms_source": [],
   "aws_internet_gateway.igw": [],
   "aws_subnet.public~2": [],
-  "aws_s3_bucket.products": []
+  "aws_s3_bucket.products": [],
+  "aws_s3_bucket.artifacts": [
+    "aws_cloudwatch_event_rule.document_landed"
+  ],
+  "aws_iam_role.ai_extraction": [
+    "aws_dynamodb_table.ai_review",
+    "aws_s3_bucket.lake"
+  ]
 }

@@ -1,38 +1,92 @@
 # TerraVision annotations for dev-platform.tvg.json (format 0.3).
 # Render: make diagrams. Graph files accept title, flows, connect (labels only) and update.
 format: 0.3
-title: "ProcureLake dev (ca-central-1): sources to Bronze, Silver and Gold"
+title: "ProcureLake dev (ca-central-1): sources to Bronze, Silver, Gold and tenant products"
 
 connect:
+  tv_aws_onprem.operator_workstation:
+    - aws_iam_role.data_engineer: "make dbt-build, catalog-check"
+    - aws_iam_role.ingestion: "make ai-land"
+    - aws_iam_role.ai_extraction: "make ai-review / ai-decide"
   tv_aws_server.usaspending_api:
-    - tv_aws_client.ingestion_cli: "Settled daily awards (HTTPS)"
-  tv_aws_client.ingestion_cli:
-    - aws_iam_role.ingestion: "Assumes role"
+    - aws_ecs_cluster.task_runner: "Settled daily awards (HTTPS, keyset paging)"
+  tv_aws_server.canada_open_data:
+    - aws_ecs_cluster.task_runner: "Contracts CSV snapshot"
+  tv_aws_server.public_contract_pdfs:
+    - aws_iam_role.ingestion: "Public-domain federal contract PDFs"
   aws_iam_role.ingestion:
-    - aws_s3_bucket.raw: "bronze/usaspending/ + manifest"
+    - aws_s3_bucket.raw: "documents/ (PDF + award record)"
+    - aws_s3_bucket.artifacts: "Landing manifest"
   aws_rds_postgres.source:
     - aws_dms_replication_instance.cdc: "Full load + CDC (logical replication)"
   aws_vpc_endpoint.secretsmanager:
     - aws_secretsmanager_secret.dms_source: "DMS source credentials"
   aws_vpc_endpoint.s3:
     - aws_s3_bucket.raw: "bronze/postgres_cdc/ (Parquet)"
+  aws_scheduler_schedule.cdc_processing:
+    - aws_sfn_state_machine.cdc_processing: "Every 5 min (during CDC sessions)"
+  aws_sfn_state_machine.cdc_processing:
+    - aws_glue_job.apply_cdc: "Apply new change files"
+    - aws_sfn_state_machine.dbt_transformation: "Changed tables only"
+  aws_scheduler_schedule.dbt_full_build:
+    - aws_sfn_state_machine.dbt_transformation: "Daily full build"
+  aws_sfn_state_machine.dbt_transformation:
+    - aws_ecs_cluster.dbt_runner: "dbt build (ECS Fargate)"
+  aws_scheduler_schedule.batch:
+    - aws_sfn_state_machine.batch_ingestion: "Daily"
+  aws_sfn_state_machine.batch_ingestion:
+    - aws_ecs_cluster.task_runner: "Ingestion task"
+    - aws_glue_job.reference_to_silver: "Then Silver"
+  aws_ecs_cluster.task_runner:
+    - aws_s3_bucket.raw: "bronze/ payload + manifest"
+    - tv_aws_server.textract: "Text and layout"
+    - tv_aws_server.bedrock: "Field extraction (Claude Haiku, Canada profile)"
+    - aws_dynamodb_table.ai_review: "Queued for review"
   aws_s3_bucket.raw:
-    - aws_glue_job.bronze_to_silver: "Snapshot batches"
-    - aws_glue_job.apply_cdc: "New DMS change files"
+    - aws_glue_job.bronze_to_silver: "Operational snapshots"
+    - aws_glue_job.apply_cdc: "DMS change files"
+    - aws_glue_job.reference_to_silver: "USAspending batches"
+  aws_s3_bucket.artifacts:
+    - aws_cloudwatch_event_rule.document_landed: "Manifest written (S3 event)"
+  aws_cloudwatch_event_rule.document_landed:
+    - aws_sfn_state_machine.document_intelligence: "One execution per document"
+  aws_sfn_state_machine.document_intelligence:
+    - aws_ecs_cluster.task_runner: "Extraction task (AI extraction role)"
+  aws_iam_role.ai_extraction:
+    - aws_dynamodb_table.ai_review: "Reviewer decision"
+    - aws_s3_bucket.lake: "Approved fields to Silver"
   aws_glue_job.apply_cdc:
-    - aws_dynamodb_table.cdc_checkpoints: "Lease + checkpoint"
+    - aws_dynamodb_table.cdc_checkpoints: "Lease, checkpoint, Gold build queue"
     - aws_s3_bucket.lake: "MERGE into Silver Iceberg"
   aws_glue_job.bronze_to_silver:
     - aws_s3_bucket.lake: "Silver Iceberg"
+  aws_glue_job.reference_to_silver:
+    - aws_s3_bucket.lake: "Silver Iceberg (reference)"
+  aws_scheduler_schedule.iceberg_maintenance:
+    - aws_glue_job.iceberg_maintenance: "Daily"
+  aws_glue_job.iceberg_maintenance:
+    - aws_s3_bucket.lake: "OPTIMIZE, VACUUM"
   aws_s3_bucket.lake:
     - aws_glue_catalog_database.silver: "Iceberg metadata"
   aws_glue_catalog_database.silver:
     - aws_athena_workgroup.engineering: "dbt reads Silver"
+  aws_ecs_cluster.dbt_runner:
+    - aws_athena_workgroup.engineering: "dbt-athena models and tests"
+  aws_iam_role.data_engineer:
+    - aws_athena_workgroup.engineering: "Queries"
   aws_athena_workgroup.engineering:
     - aws_glue_catalog_database.gold: "dbt builds Gold (lake/gold/)"
     - aws_s3_bucket.artifacts: "Query results"
-  aws_iam_role.data_engineer:
-    - aws_athena_workgroup.engineering: "make dbt-build"
+  aws_glue_catalog_database.gold:
+    - aws_lakeformation_resource.gold: "Registered with Lake Formation"
+  aws_lakeformation_resource.gold:
+    - aws_athena_workgroup.tenant: "Row filters per tenant"
+  aws_athena_workgroup.tenant:
+    - tv_aws_users.tenants: "Own rows only"
+  aws_scheduler_schedule.exports:
+    - aws_sfn_state_machine.exports: "Daily"
+  aws_sfn_state_machine.exports:
+    - aws_s3_bucket.products: "Tenant Parquet exports"
 
 update:
   aws_vpc.cdc:
@@ -48,7 +102,7 @@ update:
 
 flows:
   cdc:
-    description: "PostgreSQL CDC to Silver"
+    description: "PostgreSQL CDC to Gold"
     steps:
       - resource: aws_rds_postgres.source
         xlabel: "Change"
@@ -59,21 +113,45 @@ flows:
       - resource: "aws_vpc_endpoint.s3 -> aws_s3_bucket.raw"
         xlabel: "Land"
         detail: "DMS writes immutable Parquet change files to raw/bronze/postgres_cdc/ through the S3 gateway endpoint"
+      - resource: aws_sfn_state_machine.cdc_processing
+        xlabel: "Orchestrate"
+        detail: "Every 5 minutes, cdc_processing runs the apply job, then a dbt build of only the models downstream of the tables that changed"
       - resource: aws_glue_job.apply_cdc
         xlabel: "Apply"
-        detail: "The apply-cdc Glue 5.1 job takes a DynamoDB lease, MERGEs changes into Silver Iceberg, then advances the checkpoint"
+        detail: "The apply-cdc Glue 5.1 job takes a DynamoDB lease, MERGEs changes into Silver Iceberg, then advances the checkpoint and queues the table for Gold"
   batch:
     description: "Public reference data and snapshots"
     steps:
-      - resource: tv_aws_client.ingestion_cli
+      - resource: aws_sfn_state_machine.batch_ingestion
         xlabel: "Ingest"
-        detail: "make ingest-usaspending pulls one settled day and writes raw payload + manifest to Bronze as the ingestion role"
+        detail: "Daily, the batch ingestion machine runs a task-runner task that collects one settled USAspending day (or the Canada CSV) and writes the raw payload + manifest to Bronze"
+      - resource: aws_glue_job.reference_to_silver
+        xlabel: "Reference"
+        detail: "The reference-to-silver Glue job applies the new USAspending batches to Silver; rejects go to quarantine/"
       - resource: aws_glue_job.bronze_to_silver
         xlabel: "Validate"
-        detail: "The bronze-to-silver Glue job applies the latest complete snapshot batch; rejects go to raw/quarantine/"
+        detail: "The bronze-to-silver Glue job applies the latest complete snapshot batch of the operational tables"
   gold:
-    description: "Gold data products"
+    description: "dbt and Gold data products"
     steps:
-      - resource: aws_athena_workgroup.engineering
-        xlabel: "Build"
-        detail: "dbt-athena builds Gold Iceberg models and tests on the engineering workgroup; results land in artifacts/athena_results/"
+      - resource: aws_ecs_cluster.dbt_runner
+        xlabel: "dbt"
+        detail: "The dbt runner (dbt-athena on ECS Fargate) builds the Gold Iceberg models and runs their tests on the engineering workgroup; started by the dbt state machine"
+      - resource: aws_lakeformation_resource.gold
+        xlabel: "Govern"
+        detail: "Lake Formation row filters give each tenant only its own rows of the four tenant-facing marts"
+      - resource: aws_athena_workgroup.tenant
+        xlabel: "Serve"
+        detail: "Each tenant queries through its own Athena workgroup; daily exports write each tenant's Parquet to the products bucket"
+  documents:
+    description: "Contract documents to the review queue"
+    steps:
+      - resource: aws_cloudwatch_event_rule.document_landed
+        xlabel: "Trigger"
+        detail: "When a document's landing manifest is written to the artifacts bucket, EventBridge starts one document intelligence execution"
+      - resource: aws_ecs_cluster.task_runner
+        xlabel: "Extract"
+        detail: "The extraction task (AI extraction role) calls Textract and Bedrock, validates the fields against the schema and queues the result in DynamoDB"
+      - resource: aws_iam_role.ai_extraction
+        xlabel: "Review"
+        detail: "A named reviewer approves or rejects each extraction (make ai-decide); only approved fields reach Silver, and dbt builds the Gold mart"
