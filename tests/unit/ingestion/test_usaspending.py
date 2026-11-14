@@ -11,6 +11,7 @@ from fake_usaspending import FakeUsaspending
 
 from procurelake.common.retry import RetryPolicy
 from procurelake.ingestion.connectors.usaspending import (
+    PAGINATION,
     SCHEMA_VERSION,
     UsaspendingConfig,
     UsaspendingConnector,
@@ -54,6 +55,47 @@ def test_lands_every_page_despite_hasnext_quirk_and_reconciles(httpserver, store
     )
     assert manifest.schema_version == SCHEMA_VERSION
     assert fake.count_requests == 2  # before and after collection
+
+
+def test_a_day_over_50000_records_pages_past_the_cap_by_keyset(httpserver, stores):
+    # 2026-10-29 had 121,674 contracts: page numbers stop at 50,000 records (HTTP 422).
+    fake = FakeUsaspending(record_count=50_150)
+    fake.install(httpserver)
+    manifest = _connector(httpserver, stores).ingest_day(DAY)
+
+    assert manifest.status == "succeeded", (manifest.error, manifest.reconciliation)
+    assert len(manifest.files) == 502
+    reconciliation = manifest.reconciliation
+    assert reconciliation.landed_record_count == reconciliation.unique_record_count == 50_150
+    first, second, *_ = fake.page_requests
+    assert "last_record_sort_value" not in first and first["page"] == 1
+    assert (second["last_record_sort_value"], second["last_record_unique_id"]) == ("CONT_AWD_0000099", 99)
+    assert all("last_record_unique_id" in r for r in fake.page_requests[1:])
+    assert manifest.request["pagination"] == PAGINATION
+
+
+def test_an_exact_has_next_on_a_full_keyset_page_ends_paging_without_an_empty_request(httpserver, stores):
+    fake = FakeUsaspending(record_count=300)  # three full pages
+    fake.install(httpserver)
+    manifest = _connector(httpserver, stores).ingest_day(DAY)
+    assert manifest.status == "succeeded"
+    assert [f.record_count for f in manifest.files] == [100, 100, 100]
+    assert len(fake.page_requests) == 3
+
+
+def test_a_cursor_the_api_contradicts_fails_the_batch(httpserver, stores):
+    FakeUsaspending(record_count=350, wrong_cursor_on_page=2).install(httpserver)
+    manifest = _connector(httpserver, stores).ingest_day(DAY)
+    assert manifest.status == "failed"
+    assert "differs from the last record" in manifest.error
+
+
+def test_a_cursor_that_does_not_advance_fails_the_batch_instead_of_looping(httpserver, stores):
+    FakeUsaspending(record_count=450, stall_on_page=3).install(httpserver)
+    manifest = _connector(httpserver, stores).ingest_day(DAY)
+    assert manifest.status == "failed"
+    assert "did not advance" in manifest.error
+    assert len(manifest.files) == 3  # pages landed before the failure stay in Bronze
 
 
 def test_raw_pages_are_stored_byte_for_byte_with_checksums(httpserver, stores):
