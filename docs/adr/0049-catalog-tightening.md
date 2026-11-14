@@ -1,7 +1,11 @@
 # ADR 0049: Catalog tightening: no `gold_staging` database; tenants see only their marts in Glue
 
-- **Status:** Accepted (owner decision 2026-11-14; resolves open questions 36 and 38). Built and
-  tested offline; not deployed.
+- **Status:** Accepted (owner decision 2026-11-14; resolves open questions 36 and 38). Deployed to dev
+  2026-11-14 (`gold_staging` deleted, after adding Glue user-defined functions to the deploy
+  role's resources, bootstrap). `make test-aws`: 30 passed, including
+  `test_catalog_shows_only_tenant_facing_marts`. A tenant's query on a table it is not granted
+  now fails with `TABLE_NOT_FOUND` instead of access denied, because the table's metadata is
+  hidden; `test_tables_not_granted_fail` accepts that only after confirming the table exists.
 - **Date:** 2026-11-14
 - **Implementation:**
   - Terraform, `gold_staging` removed: `infrastructure/modules/glue_catalog` (database and

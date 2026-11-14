@@ -1,7 +1,9 @@
 # ADR 0050: CDC hardening: verified TLS to the source, DMS and freshness alarm fixes, selective dbt builds
 
-- **Status:** Accepted (owner decision 2026-11-14; resolves open questions 37, 39 and 40). Built
-  and tested offline; not deployed; live verification needs a dev/cdc session.
+- **Status:** Accepted (owner decision 2026-11-14; resolves open questions 37, 39 and 40). Deployed
+  to dev 2026-11-14 (data_platform: state machines, daily full build at 07:40 America/Toronto,
+  dbt runner image `sha256:00652032…`). The dev/cdc parts and the freshness gain are not yet
+  verified live; that needs a dev/cdc session.
 - **Date:** 2026-11-14
 - **Implementation:**
   - TLS: `src/procurelake/common/rds_tls.py`, the pinned bundle

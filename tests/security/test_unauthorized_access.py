@@ -24,12 +24,20 @@ from procurelake.common.athena import AthenaQueryError, run_query
 pytestmark = pytest.mark.aws
 
 
+# Since ADR 0049 a tenant cannot read these tables' Glue metadata, so Athena reports the table
+# as not found rather than access denied. Either way the query fails before any data is read.
+# TABLE_NOT_FOUND counts only because the test first proves, as the data engineer, that the table
+# exists: a misspelled name cannot pass as a denial.
+DENIED_OR_HIDDEN = rf"{DENIED}|TABLE_NOT_FOUND"
+
+
 @pytest.mark.parametrize("table", NOT_GRANTED)
-def test_tables_not_granted_fail(table, tenants, dev_env, evidence):
+def test_tables_not_granted_fail(table, tenants, dev_env, engineer_session, evidence):
     gold = dev_env["PROCURELAKE_DEV_GOLD_DATABASE"]
+    engineer_session.client("glue").get_table(DatabaseName=gold, Name=table)  # it exists
     for tenant, ctx in tenants.items():
         athena = ctx["session"].client("athena")
-        with pytest.raises(AthenaQueryError, match=DENIED) as denied:
+        with pytest.raises(AthenaQueryError, match=DENIED_OR_HIDDEN) as denied:
             run_query(athena, f"select count(*) from {gold}.{table}", ctx["workgroup"], gold)
         evidence["checks"].append(
             {"check": "table_denied", "tenant": tenant, "table": table, "error": str(denied.value)[:200]}
