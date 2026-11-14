@@ -1,0 +1,184 @@
+{
+  "Comment": "Document intelligence (ADR 0045, open question 41): one execution per landed contract document. Started by EventBridge when a document's landing manifest is written (pipeline_manifests/public_contracts/contract_documents/), or by hand with {\"document_id\": \"...\"}. Runs Textract + Bedrock extraction in the task runner as the AI extraction role, queues the result for human review, and notifies the reviewer. Approval, Silver and Gold stay human-driven (make ai-decide, then dbt). A document already extracted from the same PDF with the same prompt and schema is skipped (a repeated S3 event costs nothing).",
+  "StartAt": "Route",
+  "States": {
+    "Route": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.detail.object.key",
+          "IsPresent": true,
+          "Next": "FromLanding"
+        },
+        {
+          "Variable": "$.document_id",
+          "IsPresent": true,
+          "Next": "ByHand"
+        }
+      ],
+      "Default": "BadInput"
+    },
+    "FromLanding": {
+      "Type": "Pass",
+      "Parameters": {
+        "env": [
+          {
+            "Name": "PROCURELAKE_TASK",
+            "Value": "extract-document"
+          },
+          {
+            "Name": "PROCURELAKE_RUN_ID",
+            "Value.$": "$$.Execution.Name"
+          },
+          {
+            "Name": "PROCURELAKE_DOCUMENT_MANIFEST_KEY",
+            "Value.$": "$.detail.object.key"
+          }
+        ],
+        "label.$": "$.detail.object.key"
+      },
+      "Next": "Extract"
+    },
+    "ByHand": {
+      "Type": "Pass",
+      "Parameters": {
+        "env": [
+          {
+            "Name": "PROCURELAKE_TASK",
+            "Value": "extract-document"
+          },
+          {
+            "Name": "PROCURELAKE_RUN_ID",
+            "Value.$": "$$.Execution.Name"
+          },
+          {
+            "Name": "PROCURELAKE_DOCUMENT_ID",
+            "Value.$": "$.document_id"
+          }
+        ],
+        "label.$": "$.document_id"
+      },
+      "Next": "Extract"
+    },
+    "Extract": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::ecs:runTask.sync",
+      "Parameters": {
+        "Cluster": "${runner_cluster_arn}",
+        "TaskDefinition": "${runner_task_definition_arn}",
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": [
+              "${subnet_a}",
+              "${subnet_b}"
+            ],
+            "SecurityGroups": [
+              "${runner_security_group_id}"
+            ],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "Overrides": {
+          "TaskRoleArn": "${ai_extraction_role_arn}",
+          "ContainerOverrides": [
+            {
+              "Name": "task",
+              "Environment.$": "$.env"
+            }
+          ]
+        }
+      },
+      "ResultSelector": {
+        "TaskArn.$": "$.TaskArn",
+        "Containers.$": "$.Containers"
+      },
+      "ResultPath": "$.extract",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "ECS.AmazonECSException",
+            "AmazonECS.Unknown"
+          ],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        },
+        {
+          "Comment": "A non-zero exit: most likely Bedrock throttling when several documents land together. The extraction is idempotent per document (skip-extracted).",
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "IntervalSeconds": 120,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "ResultPath": "$.extract_error",
+          "Next": "Alert"
+        }
+      ],
+      "Next": "CheckExitCode"
+    },
+    "CheckExitCode": {
+      "Comment": "A second safeguard: a non-zero exit already fails the task state (ADR 0029, observed live).",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.extract.Containers[0].ExitCode",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.extract.Containers[0].ExitCode",
+              "NumericEquals": 0
+            }
+          ],
+          "Next": "NotifyReviewer"
+        }
+      ],
+      "Default": "Alert"
+    },
+    "NotifyReviewer": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${alerts_topic_arn}",
+        "Subject": "ProcureLake dev: contract extraction ready for review",
+        "Message.$": "States.Format('Document intelligence execution {} finished for {}. If it was not already extracted, it waits in the review queue: make ai-review STATUS=pending_review, then make ai-decide (ADR 0032). Nothing reaches Silver or Gold until a reviewer decides.', $$.Execution.Name, $.label)"
+      },
+      "ResultPath": null,
+      "Next": "Queued"
+    },
+    "Alert": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${alerts_topic_arn}",
+        "Subject": "ProcureLake dev: contract extraction failed",
+        "Message.$": "States.Format('Document intelligence execution {} failed for {}. See the task log (/procurelake/${runner_name}) and the audit prefix audit/ai_extraction/ in the artifacts bucket. Runbook: docs/runbooks/pipeline-alarms.md', $$.Execution.Name, $.label)"
+      },
+      "ResultPath": null,
+      "Next": "ExtractionFailed"
+    },
+    "Queued": {
+      "Type": "Succeed"
+    },
+    "BadInput": {
+      "Type": "Fail",
+      "Error": "BadInput",
+      "Cause": "Expected an S3 Object Created event (detail.object.key) or {\"document_id\": \"...\"}."
+    },
+    "ExtractionFailed": {
+      "Type": "Fail",
+      "Error": "ExtractionFailed",
+      "Cause": "The extraction task did not exit 0 or did not start (see the task log and the audit prefix)."
+    }
+  }
+}

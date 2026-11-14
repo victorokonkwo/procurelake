@@ -114,6 +114,7 @@ def test_pyproject_force_includes_bundled_dirs():
         "contracts/source": "procurelake/_bundled/contracts/source",
         "contracts/reference": "procurelake/_bundled/contracts/reference",  # ADR 0044
         "configs/pipelines/silver": "procurelake/_bundled/configs/pipelines/silver",
+        "configs/ai": "procurelake/_bundled/configs/ai",  # ADR 0045 (task runner extraction)
     }
 
 

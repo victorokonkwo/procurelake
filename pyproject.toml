@@ -26,6 +26,8 @@ packages = ["src/procurelake"]
 "contracts/source" = "procurelake/_bundled/contracts/source"
 "contracts/reference" = "procurelake/_bundled/contracts/reference"
 "configs/pipelines/silver" = "procurelake/_bundled/configs/pipelines/silver"
+# Contract intelligence configuration (ADR 0032), read by the task runner (ADR 0045).
+"configs/ai" = "procurelake/_bundled/configs/ai"
 
 [dependency-groups]
 dev = [

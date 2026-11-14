@@ -200,3 +200,9 @@ variable "schedule_data_quality" {
   type        = string
   default     = "cron(0 8 * * ? *)"
 }
+
+variable "document_intelligence_on_landing" {
+  description = "Start the document intelligence machine when a contract document lands (owner decision 2026-11-14, ADR 0045). false keeps the machine for runs by hand only (make document-intelligence-run)."
+  type        = bool
+  default     = true
+}

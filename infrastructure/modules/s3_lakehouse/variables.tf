@@ -51,3 +51,14 @@ variable "products_tenant_prefixes" {
   type        = map(string)
   default     = {}
 }
+
+variable "eventbridge_buckets" {
+  description = "Bucket keys (raw, lake, products, artifacts) whose object events are sent to Amazon EventBridge (S3 bucket notification `eventbridge = true`). Consumers filter with EventBridge rules (e.g. the document intelligence trigger on artifacts, ADR 0045)."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for b in var.eventbridge_buckets : contains(["raw", "lake", "products", "artifacts"], b)])
+    error_message = "eventbridge_buckets may only name raw, lake, products or artifacts."
+  }
+}

@@ -113,3 +113,39 @@ run "each_tenant_role_is_confined_to_its_products_prefix" {
     error_message = "Only the products bucket gets tenant statements."
   }
 }
+
+run "eventbridge_notifications_only_where_asked" {
+  command = apply
+
+  variables {
+    eventbridge_buckets = ["artifacts"]
+  }
+
+  assert {
+    condition     = toset(keys(aws_s3_bucket_notification.eventbridge)) == toset(["artifacts"])
+    error_message = "Only the listed buckets send events to EventBridge."
+  }
+  assert {
+    condition     = aws_s3_bucket_notification.eventbridge["artifacts"].eventbridge == true
+    error_message = "The artifacts bucket must send its object events to EventBridge (ADR 0045)."
+  }
+}
+
+run "no_eventbridge_notifications_by_default" {
+  command = apply
+
+  assert {
+    condition     = length(aws_s3_bucket_notification.eventbridge) == 0
+    error_message = "No bucket sends events unless asked."
+  }
+}
+
+run "rejects_an_unknown_eventbridge_bucket" {
+  command = plan
+
+  variables {
+    eventbridge_buckets = ["logs"]
+  }
+
+  expect_failures = [var.eventbridge_buckets]
+}

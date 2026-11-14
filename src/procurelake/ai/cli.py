@@ -9,6 +9,9 @@ Commands and the role each assumes (``--role-arn``):
 * ``init-silver``: create the empty Silver table (before the first dbt run that reads it);
 * ``publish``: re-write every decided review to Silver (idempotent MERGE);
 * ``evaluate``: score the latest extractions against the ground-truth labels.
+
+Without ``--role-arn`` the ambient credentials are used: in the task runner (ADR 0045) that is
+the ECS task role, set to the AI extraction role by the document intelligence state machine.
 """
 
 from __future__ import annotations
@@ -30,10 +33,15 @@ from procurelake.common.aws_clients import DEFAULT_REGION, build_session
 from procurelake.ingestion.batch import code_version
 from procurelake.ingestion.http import HttpClient
 from procurelake.ingestion.landing import S3LandingStore
+from procurelake.lakehouse.silver.resources import resource_root
 
 REPO = Path(__file__).resolve().parents[3]
-AI_CONFIG = REPO / "configs" / "ai"
 EVIDENCE = REPO / "build" / "evidence"
+
+
+def ai_config() -> Path:
+    """``configs/ai``: from the repository in a checkout, bundled in the wheel otherwise."""
+    return resource_root() / "configs" / "ai"
 
 
 def _session(args, name: str):
@@ -41,7 +49,7 @@ def _session(args, name: str):
 
 
 def cmd_land(args) -> int:
-    catalog = load_catalog(AI_CONFIG / "public_contract_documents.yaml")
+    catalog = load_catalog(ai_config() / "public_contract_documents.yaml")
     session = _session(args, "ai-land")
     s3 = session.client("s3")
     store = S3LandingStore(s3, args.raw_bucket)
@@ -61,7 +69,7 @@ def _review_table(session, args):
 def cmd_extract(args) -> int:
     from anthropic import AnthropicBedrock
 
-    config, prompt = load_model_config(AI_CONFIG)
+    config, prompt = load_model_config(ai_config())
     session = _session(args, "ai-extract")
     creds = session.get_credentials().get_frozen_credentials()
     bedrock = AnthropicBedrock(
@@ -80,6 +88,17 @@ def cmd_extract(args) -> int:
             print(f"{document_id}: not landed (run land first)", file=sys.stderr)
             failures += 1
             continue
+        if args.skip_extracted:
+            done = review.existing_extraction(
+                _review_table(session, args), document_id, landed[document_id].sha256,
+                config.prompt_version, config.schema_version,
+            )  # fmt: skip
+            if done:
+                print(
+                    f"{document_id}: already extracted as {done} (same PDF, prompt, schema); skipped",
+                    flush=True,
+                )
+                continue
         try:
             run = run_extraction(
                 landed[document_id], raw, audit, session.client("textract"), bedrock,
@@ -165,7 +184,7 @@ def cmd_publish(args) -> int:
 
 def cmd_evaluate(args) -> int:
     session = _session(args, "ai-evaluate")
-    truth = load_ground_truth(AI_CONFIG / "evaluation" / "ground_truth.yaml")
+    truth = load_ground_truth(ai_config() / "evaluation" / "ground_truth.yaml")
     report = evaluate(truth, review.list_items(_review_table(session, args)))
     result = {
         "evaluated_at": datetime.now(UTC).isoformat(),
@@ -197,7 +216,7 @@ def cmd_evaluate(args) -> int:
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="procurelake.ai.cli", description=__doc__.splitlines()[0])
     p.add_argument("--region", default=DEFAULT_REGION)
-    p.add_argument("--role-arn", required=True)
+    p.add_argument("--role-arn", help="role to assume; omit to use the ambient credentials")
     sub = p.add_subparsers(dest="command", required=True)
 
     land = sub.add_parser("land")
@@ -213,6 +232,10 @@ def parser() -> argparse.ArgumentParser:
     group = ext.add_mutually_exclusive_group(required=True)
     group.add_argument("--all", action="store_true")
     group.add_argument("--document-id", action="append")
+    ext.add_argument(
+        "--skip-extracted", action="store_true",
+        help="skip a document already extracted from the same PDF with the same prompt and schema",
+    )  # fmt: skip
 
     rev = sub.add_parser("review")
     rev.add_argument("--review-table", required=True)

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from procurelake.ai.schema import ALL_FIELDS, AmountField, DateField, TextField
@@ -89,6 +89,31 @@ def enqueue(table, record: dict) -> None:
     """Create a pending item. ``record`` holds pk, sk and the extraction, checks, provenance."""
     item = _to_item({**record, "status": PENDING})
     table.put_item(Item=item, ConditionExpression=Attr("pk").not_exists() & Attr("sk").not_exists())
+
+
+def existing_extraction(
+    table, document_id: str, pdf_sha256: str, prompt_version: str, schema_version: str
+) -> str | None:
+    """The id of an extraction already queued for these exact PDF bytes, prompt and schema.
+
+    Any status counts (pending, approved or rejected): the same input would be sent to the model
+    again for nothing. A failed extraction is never queued, so it does not count.
+    """
+    kwargs = {"KeyConditionExpression": Key("pk").eq(document_id), "ConsistentRead": True}
+    while True:
+        page = table.query(**kwargs)
+        for raw in page.get("Items", []):
+            item = _from_item(raw)
+            r = item.record
+            if (
+                (r.get("provenance") or {}).get("pdf_sha256") == pdf_sha256
+                and r.get("prompt_version") == prompt_version
+                and r.get("schema_version") == schema_version
+            ):
+                return item.extraction_id
+        if "LastEvaluatedKey" not in page:
+            return None
+        kwargs["ExclusiveStartKey"] = page["LastEvaluatedKey"]
 
 
 def get(table, document_id: str, extraction_id: str) -> ReviewItem:

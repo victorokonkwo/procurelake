@@ -24,6 +24,9 @@ module "lakehouse" {
   region         = var.region
   kms_key_arn    = module.data_key.key_arn
 
+  # Landing manifests start document extraction through an EventBridge rule (ADR 0045).
+  eventbridge_buckets = ["artifacts"]
+
   # Synthetic tenants' export prefixes (ADR 0030); roles are created in dev/security.
   products_tenant_prefixes = {
     for t in var.tenants : t => "arn:aws:iam::${var.aws_account_id}:role/${local.name_prefix}-${replace(t, "_", "-")}"

@@ -87,3 +87,8 @@ output "data_quality_state_machine_arn" {
   description = "Daily data-quality state machine (ADR 0040); null until the task runner image is deployed."
   value       = local.runner_ready ? aws_sfn_state_machine.data_quality[0].arn : null
 }
+
+output "document_intelligence_state_machine_arn" {
+  description = "Document intelligence state machine (ADR 0045); null until the task runner image is deployed."
+  value       = local.runner_ready ? aws_sfn_state_machine.document_intelligence[0].arn : null
+}

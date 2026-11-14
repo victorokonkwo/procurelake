@@ -74,3 +74,42 @@ def test_anything_else_is_refused(env):
 def test_main_returns_the_cli_exit_code(monkeypatch):
     monkeypatch.setattr(entry, "task_argv", lambda _env: ("json.tool", ["--help"]))
     assert entry.main() == 0
+
+
+DOC_MANIFEST = (
+    "pipeline_manifests/public_contracts/contract_documents/window_start=snapshot/"
+    "batch_id=nasa-80nssc20c0001-mod0003-0123456789abcdef/manifest.json"
+)
+PDF_KEY = "documents/public_contracts/document_id=x/sha256=ab/source.pdf"
+AI = BASE | {"PROCURELAKE_TASK": "extract-document", "PROCURELAKE_AI_REVIEW_TABLE": "review"}
+
+
+def test_extract_document_takes_the_id_from_the_landing_manifest():
+    module, argv = entry.task_argv(AI | {"PROCURELAKE_DOCUMENT_MANIFEST_KEY": DOC_MANIFEST})
+    assert module == "procurelake.ai.cli"
+    assert argv == [
+        "extract", "--raw-bucket", "raw", "--artifacts-bucket", "art", "--review-table", "review",
+        "--document-id", "nasa-80nssc20c0001-mod0003", "--skip-extracted",
+    ]  # fmt: skip
+    assert "--role-arn" not in argv  # the AI extraction role is the task role
+
+
+def test_extract_document_by_hand_takes_a_validated_id():
+    _module, argv = entry.task_argv(AI | {"PROCURELAKE_DOCUMENT_ID": "doe-bnl-desc0012704-mod0002"})
+    assert argv[argv.index("--document-id") + 1] == "doe-bnl-desc0012704-mod0002"
+
+
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"PROCURELAKE_DOCUMENT_MANIFEST_KEY": PDF_KEY},
+        {"PROCURELAKE_DOCUMENT_MANIFEST_KEY": DOC_MANIFEST.replace("public_contracts", "usaspending")},
+        {"PROCURELAKE_DOCUMENT_MANIFEST_KEY": DOC_MANIFEST.replace("0123456789abcdef", "0123")},
+        {"PROCURELAKE_DOCUMENT_ID": "Bad_Id; rm -rf"},
+        {"PROCURELAKE_DOCUMENT_ID": "--all"},
+        {},
+    ],
+)
+def test_extract_document_rejects_anything_but_a_document(env):
+    with pytest.raises(ValueError):
+        entry.task_argv(AI | env)
