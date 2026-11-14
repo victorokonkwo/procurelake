@@ -1,0 +1,29 @@
+version: 2
+
+sources:
+  - name: silver_reference
+    description: >-
+      Public reference data in Silver (ADR 0044), kept separate from the synthetic tenants. No Gold
+      model reads it yet: how public data relates to tenant products is open question 12. These
+      tests run with every dbt build and in the daily data-quality run.
+    schema: "{{ env_var('PROCURELAKE_SILVER_SCHEMA', 'procurelake_dev_silver') }}"
+    meta:
+      owner: data-platform
+    tables:
+      - name: silver_usaspending_contract_awards
+        description: >-
+          USAspending.gov contract awards, one row per generated_internal_id at its latest Last
+          Modified Date (contracts/reference/usaspending_contract_awards.yaml). award_amount is
+          awarded value, not spend; amounts are USD.
+        columns:
+          - name: generated_internal_id
+            data_tests: [unique, not_null]
+          - name: last_modified_at
+            data_tests: [not_null]
+          - name: currency_code
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments: {values: ["USD"]}
+          - name: _batch_id
+            data_tests: [not_null]

@@ -58,6 +58,11 @@ output "iceberg_maintenance_job_name" {
   value       = module.iceberg_maintenance.job_name
 }
 
+output "reference_to_silver_job_name" {
+  description = "Glue job applying USAspending batches to Silver (make reference-silver-run; ADR 0044)."
+  value       = module.reference_to_silver.job_name
+}
+
 output "bench_silver_job_name" {
   description = "On-demand Glue job applying postgres_bench snapshots to the bench Silver (ADR 0034)."
   value       = module.bench_bronze_to_silver.job_name

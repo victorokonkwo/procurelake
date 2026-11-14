@@ -43,6 +43,8 @@ module "task_runner" {
     PROCURELAKE_SILVER_DATABASE      = local.silver_db
     PROCURELAKE_USASPENDING_SINCE    = var.usaspending_since
     PROCURELAKE_USASPENDING_MAX_DAYS = tostring(var.usaspending_max_days)
+    # Weekly re-sweep (ADR 0044).
+    PROCURELAKE_USASPENDING_RESWEEP_DAYS = tostring(var.usaspending_resweep_days)
   }
 }
 
@@ -70,6 +72,13 @@ resource "aws_iam_role_policy" "batch_ingestion" {
         Resource  = [module.task_runner.execution_role_arn, local.foundation.ingestion_role_arn]
         Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
+      {
+        # After a USAspending ingestion or re-sweep: apply the pending batches to Silver (ADR 0044).
+        Sid      = "RunReferenceToSilver"
+        Effect   = "Allow"
+        Action   = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"]
+        Resource = "${local.glue_prefix}:job/${module.reference_to_silver.job_name}"
+      },
     ], local.alert_statements)
   })
 }
@@ -80,13 +89,14 @@ resource "aws_sfn_state_machine" "batch_ingestion" {
   name     = local.ingestion_machine
   role_arn = aws_iam_role.batch_ingestion.arn
   definition = templatefile("${path.module}/../../../../orchestration/step_functions/batch_ingestion.asl.json", {
-    cluster_arn         = module.task_runner.cluster_arn
-    task_definition_arn = module.task_runner.task_definition_arn
-    subnet_a            = module.orchestration_network.subnet_ids[0]
-    subnet_b            = module.orchestration_network.subnet_ids[1]
-    security_group_id   = module.task_runner.security_group_id
-    alerts_topic_arn    = aws_sns_topic.pipeline_alerts.arn
-    runner_name         = local.runner_name
+    cluster_arn                  = module.task_runner.cluster_arn
+    task_definition_arn          = module.task_runner.task_definition_arn
+    subnet_a                     = module.orchestration_network.subnet_ids[0]
+    subnet_b                     = module.orchestration_network.subnet_ids[1]
+    security_group_id            = module.task_runner.security_group_id
+    alerts_topic_arn             = aws_sns_topic.pipeline_alerts.arn
+    runner_name                  = local.runner_name
+    reference_to_silver_job_name = module.reference_to_silver.job_name
   })
   depends_on = [aws_iam_role_policy.batch_ingestion]
 }
@@ -187,6 +197,13 @@ locals {
       machine     = aws_sfn_state_machine.batch_ingestion[0].arn
       input       = { task = "ingest-usaspending" }
       description = "Fill missing settled USAspending days (ADR 0020, 0040)."
+    }
+    usaspending-resweep = {
+      enabled     = var.schedule_usaspending_resweep != ""
+      expression  = var.schedule_usaspending_resweep
+      machine     = aws_sfn_state_machine.batch_ingestion[0].arn
+      input       = { task = "resweep-usaspending" }
+      description = "Weekly: collect the most recent settled USAspending days again, then apply to Silver (ADR 0044)."
     }
     canada-contracts = {
       enabled     = var.schedule_canada_contracts != ""

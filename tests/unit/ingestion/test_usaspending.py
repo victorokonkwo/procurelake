@@ -15,6 +15,7 @@ from procurelake.ingestion.connectors.usaspending import (
     UsaspendingConfig,
     UsaspendingConnector,
     pending_days,
+    resweep_days,
 )
 from procurelake.ingestion.http import HttpClient
 from procurelake.ingestion.landing import LocalLandingStore
@@ -190,3 +191,25 @@ def test_manifests_without_settled_field_are_treated_as_unsettled():
     manifest = IngestionManifest.model_validate(legacy)
     assert manifest.window_settled is False
     assert pending_days([manifest], date(2026, 11, 8), date(2026, 11, 8)) == [date(2026, 11, 8)]
+
+
+def test_resweep_days_are_the_most_recent_settled_days_oldest_first():
+    # As of 2026-11-13 with a 10-day settling period, the last settled day is 2026-11-03.
+    assert resweep_days(date(2026, 11, 13), 10, 3) == [
+        date(2026, 11, 1),
+        date(2026, 11, 2),
+        date(2026, 11, 3),
+    ]
+    assert len(resweep_days(date(2026, 11, 13), 10, 30)) == 30
+    with pytest.raises(ValueError):
+        resweep_days(date(2026, 11, 13), 10, 0)
+
+
+def test_purpose_is_recorded_and_a_resweep_lands_a_new_batch_for_a_collected_day(httpserver, stores):
+    FakeUsaspending(record_count=5).install(httpserver)
+    connector = _connector(httpserver, stores)
+    daily = connector.ingest_day(DAY)
+    resweep = connector.ingest_day(DAY, purpose="resweep")
+    assert (daily.request["purpose"], resweep.request["purpose"]) == ("daily", "resweep")
+    assert daily.batch_id != resweep.batch_id and resweep.status == "succeeded"
+    assert len(load_manifests(stores[1], "usaspending", "spending_by_award")) == 2

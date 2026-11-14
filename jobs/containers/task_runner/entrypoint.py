@@ -2,11 +2,13 @@
 
 Configuration comes from the environment (task definition and Step Functions overrides):
 
-  PROCURELAKE_TASK              ingest-usaspending | ingest-canada-contracts | data-quality
+  PROCURELAKE_TASK              ingest-usaspending | resweep-usaspending | ingest-canada-contracts
+                                | data-quality
   PROCURELAKE_RUN_ID            run identifier (Step Functions execution name)
   PROCURELAKE_RAW_BUCKET, PROCURELAKE_ARTIFACTS_BUCKET
   PROCURELAKE_USASPENDING_SINCE first day the USAspending gap-filler covers (YYYY-MM-DD)
   PROCURELAKE_USASPENDING_MAX_DAYS  cap on days per run
+  PROCURELAKE_USASPENDING_RESWEEP_DAYS  most recent settled days a re-sweep collects again (ADR 0044)
   PROCURELAKE_ATHENA_WORKGROUP, PROCURELAKE_SILVER_DATABASE  (data-quality)
 
 Only these tasks run, with arguments built here: nothing from the input reaches a command line
@@ -23,7 +25,7 @@ import sys
 from datetime import date
 
 _RUN_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
-TASKS = ("ingest-usaspending", "ingest-canada-contracts", "data-quality")
+TASKS = ("ingest-usaspending", "resweep-usaspending", "ingest-canada-contracts", "data-quality")
 
 
 def _need(env: dict[str, str], name: str) -> str:
@@ -54,6 +56,11 @@ def task_argv(env: dict[str, str]) -> tuple[str, list[str]]:
     ]  # fmt: skip
     if task == "ingest-canada-contracts":
         return "procurelake.ingestion.cli", ["canada-contracts", "--skip-if-unchanged", *stores]
+    if task == "resweep-usaspending":
+        days = int(env.get("PROCURELAKE_USASPENDING_RESWEEP_DAYS", "30"))
+        if not 1 <= days <= 60:
+            raise ValueError("PROCURELAKE_USASPENDING_RESWEEP_DAYS must be between 1 and 60")
+        return "procurelake.ingestion.cli", ["usaspending", "--resweep-days", str(days), *stores]
     since = date.fromisoformat(_need(env, "PROCURELAKE_USASPENDING_SINCE")).isoformat()
     max_days = int(env.get("PROCURELAKE_USASPENDING_MAX_DAYS", "3"))
     if not 1 <= max_days <= 31:

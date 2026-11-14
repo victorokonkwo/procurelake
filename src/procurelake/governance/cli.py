@@ -20,7 +20,7 @@ from pathlib import Path
 from procurelake.common.aws_clients import DEFAULT_REGION, build_session
 from procurelake.governance.catalog import SyncResult, check_gold, check_silver, gold_expected
 from procurelake.governance.lineage import gold_lineage, to_markdown
-from procurelake.lakehouse.silver.resources import load_silver_specs
+from procurelake.lakehouse.silver.resources import load_reference, load_silver_specs
 
 
 def _manifest(path: str) -> dict:
@@ -43,7 +43,8 @@ def check(args: argparse.Namespace) -> int:
     expected_gold = gold_expected(_manifest(args.manifest))
     session = build_session(region=args.region, role_arn=args.role_arn, session_name="catalog-check")
     glue = session.client("glue")
-    results: list[SyncResult] = check_silver(glue, args.silver_database, load_silver_specs().values())
+    silver = [*load_silver_specs().values(), *load_reference().values()]
+    results: list[SyncResult] = check_silver(glue, args.silver_database, silver)
     results += check_gold(glue, args.gold_database, expected_gold)
     bad = [r for r in results if r.status != "unchanged"]
     for r in results:

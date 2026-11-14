@@ -69,6 +69,7 @@ variable "maintenance_silver_tables" {
   default = [
     "silver_agencies", "silver_suppliers", "silver_solicitations", "silver_awards",
     "silver_purchase_orders", "silver_invoices", "silver_tenants", "silver_contract_intelligence",
+    "silver_usaspending_contract_awards",
   ]
 }
 
@@ -160,6 +161,32 @@ variable "schedule_usaspending" {
   description = "EventBridge Scheduler expression (America/Toronto) for USAspending ingestion; empty disables it."
   type        = string
   default     = "cron(0 7 * * ? *)"
+}
+
+variable "schedule_usaspending_resweep" {
+  description = "Schedule for the weekly USAspending re-sweep (owner decision 2026-11-13, ADR 0044); empty disables it. After the 03:30 Iceberg maintenance, so the Silver write that follows it cannot overlap maintenance."
+  type        = string
+  default     = "cron(0 4 ? * SUN *)"
+}
+
+variable "usaspending_resweep_days" {
+  description = "Most recent settled days a re-sweep collects again (owner decision 2026-11-13: 30)."
+  type        = number
+  default     = 30
+  validation {
+    condition     = var.usaspending_resweep_days >= 1 && var.usaspending_resweep_days <= 60
+    error_message = "usaspending_resweep_days must be between 1 and 60."
+  }
+}
+
+variable "reference_max_batches" {
+  description = "Most USAspending batches one reference-to-silver run applies; the rest wait for the next run."
+  type        = number
+  default     = 60
+  validation {
+    condition     = var.reference_max_batches >= 1
+    error_message = "reference_max_batches must be at least 1."
+  }
 }
 
 variable "schedule_canada_contracts" {

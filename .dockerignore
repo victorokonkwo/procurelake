@@ -12,5 +12,6 @@ dbt/.user.yml
 # Task runner (ADR 0040): the package and the files its wheel bundles.
 !src/
 !contracts/source/
+!contracts/reference/
 !configs/pipelines/silver/
 **/__pycache__/

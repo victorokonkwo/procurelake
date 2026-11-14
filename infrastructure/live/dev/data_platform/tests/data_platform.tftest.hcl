@@ -352,8 +352,39 @@ run "batch_ingestion_and_data_quality_run_as_the_right_roles_and_alert" {
     error_message = "Batch ingestion may pass only the runner's execution role and the ingestion role, to ECS tasks."
   }
   assert {
-    condition     = toset(keys(aws_scheduler_schedule.batch)) == toset(["usaspending", "canada-contracts", "data-quality"]) && aws_scheduler_schedule.batch["data-quality"].schedule_expression_timezone == "America/Toronto"
-    error_message = "All three schedules exist by default, in Toronto time."
+    condition     = toset(keys(aws_scheduler_schedule.batch)) == toset(["usaspending", "usaspending-resweep", "canada-contracts", "data-quality"]) && aws_scheduler_schedule.batch["data-quality"].schedule_expression_timezone == "America/Toronto"
+    error_message = "All four schedules exist by default, in Toronto time."
+  }
+  assert {
+    condition     = jsondecode(aws_scheduler_schedule.batch["usaspending-resweep"].target[0].input).task == "resweep-usaspending" && aws_scheduler_schedule.batch["usaspending-resweep"].schedule_expression == "cron(0 4 ? * SUN *)"
+    error_message = "The weekly re-sweep starts the resweep-usaspending task on Sundays after maintenance (ADR 0044)."
+  }
+  assert {
+    condition     = jsondecode(aws_sfn_state_machine.batch_ingestion[0].definition).States.ApplyReferenceToSilver.Parameters.JobName == "procurelake-dev-reference-to-silver" && jsondecode(aws_sfn_state_machine.batch_ingestion[0].definition).States.ApplyReferenceToSilver.Catch[0].Next == "Alert"
+    error_message = "USAspending ingestion continues into the Silver job, and a Silver failure alerts."
+  }
+}
+
+run "reference_silver_job_touches_only_usaspending_data" {
+  command = apply
+
+  # Every allowed resource is a USAspending prefix, the job's own Silver table, a bucket (for
+  # prefix-conditioned listing), the catalog or Silver database, or the KMS key.
+  assert {
+    condition = alltrue(flatten([
+      for s in jsondecode(local.reference_to_silver_policy).Statement : [
+        for r in flatten([s.Resource]) : s.Effect == "Deny" || startswith(r, "arn:aws:kms:") || endswith(r, ":catalog") || endswith(r, ":database/procurelake_dev_silver") || contains([
+          "arn:aws:s3:::procurelake-dev-raw-123456789012-ca-central-1",
+          "arn:aws:s3:::procurelake-dev-lake-123456789012-ca-central-1",
+          "arn:aws:s3:::procurelake-dev-artifacts-123456789012-ca-central-1",
+        ], r) || strcontains(r, "usaspending") || strcontains(r, "spending_by_award")
+      ]
+    ]))
+    error_message = "The reference job may read and write only USAspending prefixes and its own Silver table."
+  }
+  assert {
+    condition     = module.reference_to_silver.job_arguments_for_test["--contract"] == "usaspending_contract_awards" && module.reference_to_silver.job_arguments_for_test["--max-batches"] == "60"
+    error_message = "The job applies the USAspending contract, at most 60 batches per run."
   }
 }
 

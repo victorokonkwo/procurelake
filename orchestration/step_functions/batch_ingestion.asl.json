@@ -1,5 +1,5 @@
 {
-  "Comment": "Batch ingestion (ADR 0040): run one allow-listed ingestion task in the task runner container on ECS Fargate, as the ingestion role. Input: {\"task\": \"ingest-usaspending\" | \"ingest-canada-contracts\"}. Fails, and alerts, unless the container exits 0.",
+  "Comment": "Batch ingestion (ADR 0040, ADR 0044): run one allow-listed ingestion task in the task runner container on ECS Fargate, as the ingestion role; after a USAspending ingestion or re-sweep, apply the pending batches to Silver (Glue). Input: {\"task\": \"ingest-usaspending\" | \"resweep-usaspending\" | \"ingest-canada-contracts\"}. Fails, and alerts, unless every step succeeds.",
   "StartAt": "ValidateInput",
   "States": {
     "ValidateInput": {
@@ -8,6 +8,7 @@
         {
           "Or": [
             { "Variable": "$.task", "StringEquals": "ingest-usaspending" },
+            { "Variable": "$.task", "StringEquals": "resweep-usaspending" },
             { "Variable": "$.task", "StringEquals": "ingest-canada-contracts" }
           ],
           "Next": "RunIngestion"
@@ -68,10 +69,46 @@
             { "Variable": "$.ingestion.Containers[0].ExitCode", "IsPresent": true },
             { "Variable": "$.ingestion.Containers[0].ExitCode", "NumericEquals": 0 }
           ],
-          "Next": "Succeeded"
+          "Next": "NeedsSilver"
         }
       ],
       "Default": "Alert"
+    },
+    "NeedsSilver": {
+      "Comment": "USAspending batches go on to Silver (ADR 0044); the Canada contracts CSV is Bronze only (open question 34 covers USAspending).",
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Or": [
+            { "Variable": "$.task", "StringEquals": "ingest-usaspending" },
+            { "Variable": "$.task", "StringEquals": "resweep-usaspending" }
+          ],
+          "Next": "ApplyReferenceToSilver"
+        }
+      ],
+      "Default": "Succeeded"
+    },
+    "ApplyReferenceToSilver": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": { "JobName": "${reference_to_silver_job_name}" },
+      "ResultSelector": {
+        "JobRunId.$": "$.Id",
+        "JobRunState.$": "$.JobRunState",
+        "ExecutionTime.$": "$.ExecutionTime"
+      },
+      "ResultPath": "$.silver",
+      "Retry": [
+        {
+          "Comment": "The job is idempotent (ADR 0044). The likely error is another run of it in progress (max one concurrent run): wait and try again.",
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 300,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "Alert" }],
+      "Next": "Succeeded"
     },
     "Alert": {
       "Type": "Task",
@@ -79,7 +116,7 @@
       "Parameters": {
         "TopicArn": "${alerts_topic_arn}",
         "Subject": "ProcureLake dev: batch ingestion failed",
-        "Message.$": "States.Format('Batch ingestion task {} failed (execution {}). The batch manifest records why; see the task log in /procurelake/${runner_name}. Runbook: docs/runbooks/pipeline-alarms.md', $.task, $$.Execution.Name)"
+        "Message.$": "States.Format('Batch ingestion task {} failed (execution {}). If the ingestion failed, the batch manifest records why (task log /procurelake/${runner_name}); if the Silver step failed, see the Glue job ${reference_to_silver_job_name} and its run summary in pipeline_runs/silver/usaspending/. Runbook: docs/runbooks/pipeline-alarms.md', $.task, $$.Execution.Name)"
       },
       "ResultPath": null,
       "Next": "IngestionFailed"
@@ -88,12 +125,12 @@
     "IngestionFailed": {
       "Type": "Fail",
       "Error": "IngestionFailed",
-      "Cause": "The ingestion task did not exit 0 or did not start (see the task log and the batch manifest in pipeline_manifests/)."
+      "Cause": "The ingestion task did not exit 0 or did not start, or the Silver step failed (see the task log, the batch manifest in pipeline_manifests/, and the Glue run)."
     },
     "BadInput": {
       "Type": "Fail",
       "Error": "BadInput",
-      "Cause": "Input must be {\"task\": \"ingest-usaspending\"} or {\"task\": \"ingest-canada-contracts\"}."
+      "Cause": "Input must be {\"task\": \"ingest-usaspending\"}, {\"task\": \"resweep-usaspending\"} or {\"task\": \"ingest-canada-contracts\"}."
     }
   }
 }

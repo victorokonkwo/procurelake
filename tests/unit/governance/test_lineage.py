@@ -8,9 +8,9 @@ import pytest
 from botocore.stub import Stubber
 
 from procurelake.governance import cli
-from procurelake.governance.catalog import silver_metadata
+from procurelake.governance.catalog import reference_metadata, silver_metadata
 from procurelake.governance.lineage import gold_lineage, to_markdown
-from procurelake.lakehouse.silver.resources import load_silver_specs
+from procurelake.lakehouse.silver.resources import load_reference, load_silver_specs
 
 SPECS = load_silver_specs()
 
@@ -138,6 +138,10 @@ def test_cli_check_fails_on_drift_and_passes_when_declared(tmp_path, monkeypatch
             m = silver_metadata(spec)
             out.append({"Name": spec.silver_table, "DatabaseName": "s", "Description": m.description,
                         "Parameters": dict(m.parameters)})  # fmt: skip
+        for ref in load_reference().values():
+            m = reference_metadata(ref)
+            out.append({"Name": ref.silver_table, "DatabaseName": "s", "Description": m.description,
+                        "Parameters": dict(m.parameters)})  # fmt: skip
         public = {**META, "data_classification": "public"}
         for name, meta in (("fct_contract_award", META), ("mart_ai", public), ("mart_awarded_value", META)):
             table = {"Name": name, "DatabaseName": "g", "Parameters": dict(meta)}
@@ -157,4 +161,4 @@ def test_cli_check_fails_on_drift_and_passes_when_declared(tmp_path, monkeypatch
             stub.assert_no_pending_responses()
     out = capsys.readouterr().out
     assert "FAIL  g.mart_ai: drift (Description)" in out
-    assert f"{len(SPECS) + 3} tables checked, 0 not as declared" in out
+    assert f"{len(SPECS) + len(load_reference()) + 3} tables checked, 0 not as declared" in out

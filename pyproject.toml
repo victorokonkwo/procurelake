@@ -24,6 +24,7 @@ packages = ["src/procurelake"]
 # applies the rules of the same commit (procurelake.lakehouse.silver.job.resource_root).
 [tool.hatch.build.targets.wheel.force-include]
 "contracts/source" = "procurelake/_bundled/contracts/source"
+"contracts/reference" = "procurelake/_bundled/contracts/reference"
 "configs/pipelines/silver" = "procurelake/_bundled/configs/pipelines/silver"
 
 [dependency-groups]

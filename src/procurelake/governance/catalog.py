@@ -24,6 +24,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from procurelake.contracts.reference import ReferenceContract
 from procurelake.lakehouse.silver.spec import SilverTableSpec
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,30 @@ def silver_metadata(spec: SilverTableSpec) -> TableMetadata:
             "tenant_scoped": str(c.tenant_scoped).lower(),
         },
     )
+
+
+def reference_metadata(c: ReferenceContract) -> TableMetadata:
+    """The catalog metadata a reference Silver table carries (ADR 0044), from its contract."""
+    description = " ".join(c.description.split())[:_MAX_DESCRIPTION]
+    return TableMetadata(
+        description=description,
+        parameters={
+            "comment": description,
+            "owner": c.owner,
+            "data_classification": c.data_classification,
+            "grain": " ".join(c.grain.split()),
+            "contract_name": c.name,
+            "contract_version": str(c.contract_version),
+            "source_system": c.source_system,
+            "source_table": f"{c.source_system}/{c.dataset}",
+            "tenant_scoped": "false",
+            "currency_code": c.currency_code,
+        },
+    )
+
+
+def expected_metadata(item: SilverTableSpec | ReferenceContract) -> TableMetadata:
+    return reference_metadata(item) if isinstance(item, ReferenceContract) else silver_metadata(item)
 
 
 def drift(table: dict[str, Any], expected: TableMetadata) -> tuple[str, ...]:
@@ -109,18 +134,22 @@ def apply_metadata(glue, database: str, name: str, expected: TableMetadata, atte
     return SyncResult(fq, "failed", error=f"still concurrently modified after {attempts} attempts")
 
 
-def sync_silver(glue, database: str, specs: Iterable[SilverTableSpec]) -> list[SyncResult]:
+def sync_silver(
+    glue, database: str, specs: Iterable[SilverTableSpec | ReferenceContract]
+) -> list[SyncResult]:
     """Apply every contract's metadata to its Silver table. A table not built yet is ``missing``."""
     results = []
     for spec in specs:
         try:
-            results.append(apply_metadata(glue, database, spec.silver_table, silver_metadata(spec)))
+            results.append(apply_metadata(glue, database, spec.silver_table, expected_metadata(spec)))
         except Exception as exc:
             results.append(SyncResult(f"{database}.{spec.silver_table}", "failed", error=repr(exc)))
     return results
 
 
-def check_silver(glue, database: str, specs: Iterable[SilverTableSpec]) -> list[SyncResult]:
+def check_silver(
+    glue, database: str, specs: Iterable[SilverTableSpec | ReferenceContract]
+) -> list[SyncResult]:
     """Read-only: which Silver tables lack their contract's metadata (status ``drift``)."""
     results = []
     for spec in specs:
@@ -130,7 +159,7 @@ def check_silver(glue, database: str, specs: Iterable[SilverTableSpec]) -> list[
         except glue.exceptions.EntityNotFoundException:
             results.append(SyncResult(fq, "missing"))
             continue
-        changed = drift(table, silver_metadata(spec))
+        changed = drift(table, expected_metadata(spec))
         results.append(SyncResult(fq, "drift" if changed else "unchanged", changed))
     return results
 

@@ -8,6 +8,9 @@ Examples:
     # Incremental: every day since --since without a succeeded batch (max 3 per run):
     python -m procurelake.ingestion.cli usaspending --since 2026-11-01 --max-days 3 ...
 
+    # Weekly re-sweep: collect the 30 most recent settled days again (ADR 0044):
+    python -m procurelake.ingestion.cli usaspending --resweep-days 30 ...
+
     # Local filesystem instead of S3 (no AWS needed):
     python -m procurelake.ingestion.cli usaspending --date 2026-11-08 --local-root ./local_lake
 
@@ -37,7 +40,7 @@ from procurelake.contracts.source import load_contracts
 from procurelake.ingestion.connectors import canada_contracts
 from procurelake.ingestion.connectors.csv_snapshot import CsvSnapshotConnector, CsvSource
 from procurelake.ingestion.connectors.postgres_snapshot import PostgresSnapshotConnector
-from procurelake.ingestion.connectors.usaspending import UsaspendingConnector, plan_incremental
+from procurelake.ingestion.connectors.usaspending import UsaspendingConnector, plan_incremental, resweep_days
 from procurelake.ingestion.http import HttpClient
 from procurelake.ingestion.landing import LandingStore, LocalLandingStore, S3LandingStore
 
@@ -126,6 +129,11 @@ def main(argv: list[str] | None = None) -> int:
     when = usa.add_mutually_exclusive_group(required=True)
     when.add_argument("--date", type=date.fromisoformat, help="single UTC day (YYYY-MM-DD)")
     when.add_argument("--since", type=date.fromisoformat, help="fill every missing day since this date")
+    when.add_argument(
+        "--resweep-days",
+        type=int,
+        help="collect the N most recent settled days again, as re-sweep batches (ADR 0044)",
+    )
     usa.add_argument("--max-days", type=int, default=None, help="cap on days per incremental run")
     usa.add_argument("--raw-bucket")
     usa.add_argument("--manifest-bucket")
@@ -183,18 +191,20 @@ def main(argv: list[str] | None = None) -> int:
     connector = UsaspendingConnector(HttpClient(), raw_store, manifest_store)
 
     last_settled_day = datetime.now(UTC).date() - timedelta(days=connector.config.settle_days)
-    days = (
-        [args.date]
-        if args.date
-        else plan_incremental(manifest_store, args.since, last_settled_day, args.max_days)
-    )
+    purpose = "resweep" if args.resweep_days else "daily"
+    if args.resweep_days:
+        days = resweep_days(datetime.now(UTC).date(), connector.config.settle_days, args.resweep_days)
+    elif args.date:
+        days = [args.date]
+    else:
+        days = plan_incremental(manifest_store, args.since, last_settled_day, args.max_days)
     if not days:
         print("Nothing to ingest: every day in range already has a succeeded batch.")
         return 0
 
     failures = 0
     for day in days:
-        manifest = connector.ingest_day(day, allow_unsettled=args.allow_unsettled)
+        manifest = connector.ingest_day(day, allow_unsettled=args.allow_unsettled, purpose=purpose)
         rec = manifest.reconciliation
         print(
             f"{day} batch={manifest.batch_id} status={manifest.status} settled={manifest.window_settled} "

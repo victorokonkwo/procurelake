@@ -158,7 +158,10 @@ class UsaspendingConnector:
     def is_settled(self, day: date, as_of: date) -> bool:
         return (as_of - day).days >= self.config.settle_days
 
-    def ingest_day(self, day: date, allow_unsettled: bool = False) -> IngestionManifest:
+    def ingest_day(
+        self, day: date, allow_unsettled: bool = False, purpose: str = "daily"
+    ) -> IngestionManifest:
+        """Collect one day. ``purpose`` (``daily`` or ``resweep``) is recorded in the manifest request."""
         started = self.clock().replace(microsecond=0)
         if day >= started.date():
             raise ValueError(f"{day} is not a complete UTC day yet; ingest only past days")
@@ -211,6 +214,7 @@ class UsaspendingConnector:
             window=CollectionWindow(date_type="last_modified_date", start_date=day, end_date=day),
             window_settled=settled,
             request={
+                "purpose": purpose,
                 "endpoint": "/api/v2/search/spending_by_award/",
                 "count_endpoint": "/api/v2/search/spending_by_award_count/",
                 "base_url": self.config.base_url,
@@ -283,6 +287,19 @@ def pending_days(
     days = [since + timedelta(days=i) for i in range((through - since).days + 1)]
     missing = [d for d in days if d not in done]
     return missing[:max_days] if max_days is not None else missing
+
+
+def resweep_days(as_of: date, settle_days: int, days: int) -> list[date]:
+    """The ``days`` most recent settled days, oldest first (open question 30, ADR 0044).
+
+    A re-sweep collects them again even though they already have a succeeded batch: records
+    added to a day after it was collected, or changed without a new modification date, appear
+    only this way. Silver's MERGE absorbs repeats, and reports what each re-sweep found.
+    """
+    if days < 1:
+        raise ValueError("days must be >= 1")
+    last = as_of - timedelta(days=settle_days)
+    return [last - timedelta(days=i) for i in range(days - 1, -1, -1)]
 
 
 def plan_incremental(
