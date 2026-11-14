@@ -113,6 +113,39 @@ run "every_glue_job_encrypts_its_logs_with_the_data_key" {
   }
 }
 
+# CI plans every root before any apply, so the first plan sees a foundation state without the
+# new output (ADR 0048). The same name must be derived, so the plan works and matches.
+run "security_configuration_name_works_before_foundation_has_the_output" {
+  command = plan
+
+  override_data {
+    target = data.terraform_remote_state.foundation
+    values = {
+      outputs = {
+        bucket_names = {
+          raw       = "procurelake-dev-raw-123456789012-ca-central-1"
+          lake      = "procurelake-dev-lake-123456789012-ca-central-1"
+          products  = "procurelake-dev-products-123456789012-ca-central-1"
+          artifacts = "procurelake-dev-artifacts-123456789012-ca-central-1"
+        }
+        data_kms_key_arn           = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+        silver_database_name       = "procurelake_dev_silver"
+        gold_database_name         = "procurelake_dev_gold"
+        bench_silver_database_name = "procurelake_dev_bench_silver"
+        bench_gold_database_name   = "procurelake_dev_bench_gold"
+        athena_workgroup_name      = "procurelake-dev-engineering"
+        data_engineer_role_arn     = "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"
+        ingestion_role_arn         = "arn:aws:iam::123456789012:role/procurelake-dev-ingestion"
+      }
+    }
+  }
+
+  assert {
+    condition     = aws_glue_security_configuration.jobs.name == "procurelake-dev-glue-jobs"
+    error_message = "Without the foundation output, the security configuration name must be derived the same way."
+  }
+}
+
 run "silver_job_cannot_delete_bronze" {
   command = apply
 

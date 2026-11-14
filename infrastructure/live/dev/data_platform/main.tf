@@ -151,7 +151,10 @@ module "bronze_to_silver" {
 # before. Bookmarks are off in every job, so bookmark encryption stays DISABLED too. The
 # provider requires all three blocks.
 resource "aws_glue_security_configuration" "jobs" {
-  name = local.foundation.glue_security_configuration_name
+  # The foundation output exists only after foundation is applied; until then (the first plan,
+  # which CI makes for every root before any apply) the same name is derived here, so both
+  # plans agree. Foundation's KMS key policy is scoped to this name's log groups.
+  name = try(local.foundation.glue_security_configuration_name, "${local.name_prefix}-glue-jobs")
 
   encryption_configuration {
     cloudwatch_encryption {
