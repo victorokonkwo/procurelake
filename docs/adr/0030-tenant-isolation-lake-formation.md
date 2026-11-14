@@ -70,9 +70,11 @@ So the owner approved an experiment first.
   through IAM (live: `dbt build` PASS=75 on the registered location). The Athena DDL limitation
   applies to principals governed by Lake Formation, and the pipeline is not one.
 - A tenant denied a non-opted-in table (`fct_contract_award`) is stopped by the IAM S3 deny,
-  not by Lake Formation. Both layers are needed.
+  not by Lake Formation. Both layers are needed. *Since ADR 0049 the query should be stopped
+  earlier, at `glue:GetTable` (not yet run live); the S3 deny stays.*
 - Tenants can read Glue metadata (names and schemas) for every Gold table, not their rows. See
-  open question 38.
+  open question 38. *Resolved by ADR 0049: tenant roles' Glue reads are limited to the catalog,
+  the Gold database and the tenant-facing marts.*
 - Provider and service behaviour, worked around in code:
   - `excluded_column_names = []` is needed in the filter's `column_wildcard`.
   - The database `DESCRIBE` grant and the admin's table `SELECT` grants ignore `permissions`
