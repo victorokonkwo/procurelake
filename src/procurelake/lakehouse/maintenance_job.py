@@ -7,8 +7,11 @@ Arguments (set by Terraform, ``infrastructure/live/dev/data_platform``):
 * ``--silver-max-age-seconds`` / ``--silver-min-snapshots`` and the ``--gold-*`` pair: retention;
 * ``--report-bucket`` / ``--report-prefix``: where the JSON run report is written.
 
-After maintenance, each Silver table that has a source contract gets the contract's owner,
-classification, grain and description in Glue (``procurelake.governance.catalog``, ADR 0042).
+Athena's maintenance commits drop every Glue table parameter except Iceberg's own, including
+the owner, grain, freshness and classification dbt writes to Gold. So each table's parameters
+are saved before maintenance and the dropped ones put back after it. Then each Silver table that
+has a source or reference contract gets the contract's metadata (``procurelake.governance.catalog``,
+ADR 0042).
 
 The run fails (raises) if any table failed, in maintenance or in the catalog step; a table
 skipped because the CDC writer held its lease is not a failure (the next run maintains it).
@@ -25,7 +28,7 @@ from datetime import UTC, datetime
 import boto3
 
 from procurelake.cdc.checkpoint import CheckpointStore
-from procurelake.governance.catalog import SyncResult, sync_silver
+from procurelake.governance.catalog import SyncResult, restore_metadata, save_metadata, sync_silver
 from procurelake.lakehouse.maintenance import Athena, Retention, TableResult, TableTarget, run
 from procurelake.lakehouse.silver.resources import load_reference, load_silver_specs
 
@@ -80,6 +83,19 @@ def catalog_step(glue, args: argparse.Namespace) -> list[SyncResult]:
     return sync_silver(glue, args.silver_database, [*specs, *refs])
 
 
+def save_step(glue, targets_: list[TableTarget]) -> dict[str, dict]:
+    """The Glue metadata of every maintained table, by database, before maintenance."""
+    by_db: dict[str, list[str]] = {}
+    for t in targets_:
+        by_db.setdefault(t.database, []).append(t.table)
+    return {db: save_metadata(glue, db, names) for db, names in by_db.items()}
+
+
+def restore_step(glue, saved: dict[str, dict]) -> list[SyncResult]:
+    """Put back what maintenance dropped (only missing parameters; see the module docstring)."""
+    return [r for db, tables in saved.items() for r in restore_metadata(glue, db, tables)]
+
+
 def report(
     results: list[TableResult], started: datetime, run_id: str, catalog: list[SyncResult] | None = None
 ) -> dict:
@@ -108,8 +124,11 @@ def main(argv: list[str]) -> None:
     run_id = args.job_run_id or f"manual-{started:%Y%m%dT%H%M%SZ}"
     athena = Athena(boto3.client("athena", region_name=args.region), args.workgroup)
     checkpoints = CheckpointStore(boto3.client("dynamodb", region_name=args.region), args.checkpoint_table)
-    results = run(athena, targets(args), checkpoints, owner=f"maintenance:{run_id}")
-    catalog = catalog_step(boto3.client("glue", region_name=args.region), args)
+    glue = boto3.client("glue", region_name=args.region)
+    maintained = targets(args)
+    saved = save_step(glue, maintained)
+    results = run(athena, maintained, checkpoints, owner=f"maintenance:{run_id}")
+    catalog = restore_step(glue, saved) + catalog_step(glue, args)
     body = report(results, started, run_id, catalog)
     key = f"{args.report_prefix}/run_date={started:%Y-%m-%d}/{run_id}.json"
     boto3.client("s3", region_name=args.region).put_object(

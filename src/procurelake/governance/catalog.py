@@ -15,6 +15,12 @@ definition, including ``metadata_location``; writing a stale copy would roll the
 an older snapshot. Each update therefore passes the ``VersionId`` it read: if a writer committed
 in between, Glue rejects the update (``ConcurrentModificationException``), and the table is read
 again and the update retried.
+
+Athena maintenance (``OPTIMIZE``, ``VACUUM``, ``ALTER TABLE SET TBLPROPERTIES``) commits a Glue
+table entry that keeps only Iceberg's own parameters, dropping every other one (seen on dev
+2026-11-14: the Gold marts lost dbt's owner, grain, freshness and classification). The
+maintenance job therefore saves each table's parameters first (``save_metadata``) and puts back
+the ones the commit dropped (``restore_metadata``). Silver is then re-synced from its contracts.
 """
 
 from __future__ import annotations
@@ -95,7 +101,7 @@ def drift(table: dict[str, Any], expected: TableMetadata) -> tuple[str, ...]:
     """Names of the expected fields the Glue table does not carry as declared."""
     params = table.get("Parameters") or {}
     out = [k for k, v in expected.parameters.items() if params.get(k) != v]
-    if table.get("Description") != expected.description:
+    if (table.get("Description") or "") != expected.description:
         out.insert(0, "Description")
     return tuple(out)
 
@@ -106,14 +112,32 @@ def _table_input(glue, table: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in table.items() if k in members}
 
 
-def apply_metadata(glue, database: str, name: str, expected: TableMetadata, attempts: int = 5) -> SyncResult:
-    """Write ``expected`` to one Glue table, without touching anything else it holds."""
+def apply_metadata(
+    glue,
+    database: str,
+    name: str,
+    expected: TableMetadata,
+    attempts: int = 5,
+    fill_only: bool = False,
+) -> SyncResult:
+    """Write ``expected`` to one Glue table, without touching anything else it holds.
+
+    With ``fill_only``, only parameters the table lacks are written (and the description only
+    if it has none): a value set meanwhile, say by a dbt run, is never overwritten.
+    """
     fq = f"{database}.{name}"
+    wanted = expected
     for attempt in range(1, attempts + 1):
         try:
             table = glue.get_table(DatabaseName=database, Name=name)["Table"]
         except glue.exceptions.EntityNotFoundException:
             return SyncResult(fq, "missing")
+        if fill_only:
+            have = table.get("Parameters") or {}
+            expected = TableMetadata(
+                description=table.get("Description") or wanted.description,
+                parameters={k: v for k, v in wanted.parameters.items() if k not in have},
+            )
         changed = drift(table, expected)
         if not changed:
             return SyncResult(fq, "unchanged")
@@ -144,6 +168,34 @@ def sync_silver(
             results.append(apply_metadata(glue, database, spec.silver_table, expected_metadata(spec)))
         except Exception as exc:
             results.append(SyncResult(f"{database}.{spec.silver_table}", "failed", error=repr(exc)))
+    return results
+
+
+# Parameters Iceberg itself maintains in the Glue entry; never saved or restored.
+ICEBERG_PARAMETERS = frozenset({"metadata_location", "previous_metadata_location", "table_type"})
+
+
+def save_metadata(glue, database: str, names: Iterable[str]) -> dict[str, TableMetadata]:
+    """Each existing table's description and non-Iceberg parameters, before maintenance."""
+    saved = {}
+    for name in names:
+        try:
+            table = glue.get_table(DatabaseName=database, Name=name)["Table"]
+        except glue.exceptions.EntityNotFoundException:
+            continue
+        params = {k: v for k, v in (table.get("Parameters") or {}).items() if k not in ICEBERG_PARAMETERS}
+        saved[name] = TableMetadata(description=table.get("Description") or "", parameters=params)
+    return saved
+
+
+def restore_metadata(glue, database: str, saved: dict[str, TableMetadata]) -> list[SyncResult]:
+    """Put back the saved parameters a commit dropped; values present now are kept."""
+    results = []
+    for name, meta in saved.items():
+        try:
+            results.append(apply_metadata(glue, database, name, meta, fill_only=True))
+        except Exception as exc:
+            results.append(SyncResult(f"{database}.{name}", "failed", error=repr(exc)))
     return results
 
 
