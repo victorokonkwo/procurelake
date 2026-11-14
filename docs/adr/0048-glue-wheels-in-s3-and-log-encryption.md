@@ -144,6 +144,10 @@ On 2026-11-14 the owner chose both.
   either way.
 
 ## Consequences
+- **Checkov CKV_AWS_99 is waived on the security configuration.** The check wants S3 and
+  bookmark encryption set in Glue too. S3 objects are already SSE-KMS with the data key by
+  bucket default, and setting it in Glue would change how every data file is written;
+  bookmarks are off. The waiver is a `checkov:skip` comment on the resource (ADR 0037).
 - **Not deployed; to confirm on the first dev run.** What was verified offline: two builds give
   the same bytes; the bundle installs with `pip install --no-index --no-deps -r
   wheels/requirements.txt --find-links wheels` plus the procurelake wheel in an

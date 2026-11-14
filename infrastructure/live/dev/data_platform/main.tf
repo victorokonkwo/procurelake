@@ -151,6 +151,7 @@ module "bronze_to_silver" {
 # before. Bookmarks are off in every job, so bookmark encryption stays DISABLED too. The
 # provider requires all three blocks.
 resource "aws_glue_security_configuration" "jobs" {
+  # checkov:skip=CKV_AWS_99: CloudWatch logs are KMS-encrypted here; S3 objects are already SSE-KMS with the data key by bucket default (modules/s3_lakehouse), and setting it in Glue would change how every data file is written; bookmarks are off in every job (ADR 0048)
   # The foundation output exists only after foundation is applied; until then (the first plan,
   # which CI makes for every root before any apply) the same name is derived here, so both
   # plans agree. Foundation's KMS key policy is scoped to this name's log groups.
