@@ -33,13 +33,13 @@ variable "wheel_path" {
   type        = string
 }
 
-variable "python_modules" {
-  description = "Exact 'name==version' pins installed with --no-deps next to the wheel."
-  type        = list(string)
+variable "dependencies_bundle_path" {
+  description = "Local path of the dependency zip of wheels (make glue-wheel; ADR 0048). Installed with --no-index, so it must hold every pinned dependency."
+  type        = string
 
   validation {
-    condition     = alltrue([for m in var.python_modules : can(regex("^[A-Za-z0-9._-]+==[A-Za-z0-9.+-]+$", m))])
-    error_message = "Every python module must be pinned as name==version."
+    condition     = endswith(var.dependencies_bundle_path, ".gluewheels.zip")
+    error_message = "AWS Glue recognises a zip of wheels only by the .gluewheels.zip suffix."
   }
 }
 
@@ -99,9 +99,25 @@ variable "timeout_minutes" {
   default     = 30
 }
 
-variable "log_group_arns" {
-  description = "Glue log groups the job writes to (/aws-glue/jobs/error and /output; account-wide)."
-  type        = list(string)
+variable "security_configuration_name" {
+  description = "Glue security configuration attached to the job (CloudWatch Logs encryption; ADR 0048). It also names the job's log groups."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_-]{1,255}$", var.security_configuration_name))
+    error_message = "Security configuration names contain letters, digits, hyphens or underscores (at most 255)."
+  }
+}
+
+variable "log_kms_key_arn" {
+  description = "KMS key encrypting the job's log groups: the key of the security configuration's CloudWatch encryption."
+  type        = string
+}
+
+variable "log_retention_days" {
+  description = "Retention of the job's log groups."
+  type        = number
+  default     = 30
 }
 
 variable "tags" {

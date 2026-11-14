@@ -312,10 +312,15 @@ locals {
       ]
     },
     {
-      # Actions without resource-level permissions (AWS Service Authorization Reference).
-      Sid      = "UnscopableActions"
-      Effect   = "Allow"
-      Action   = ["ecs:RegisterTaskDefinition", "ecs:DeregisterTaskDefinition", "logs:DescribeLogGroups", "kms:CreateKey", "lakeformation:*", "states:ListStateMachines"]
+      # Actions without resource-level permissions (AWS Service Authorization Reference). Glue
+      # security configurations have no resource type (data_platform, ADR 0048).
+      Sid    = "UnscopableActions"
+      Effect = "Allow"
+      Action = [
+        "ecs:RegisterTaskDefinition", "ecs:DeregisterTaskDefinition", "logs:DescribeLogGroups", "kms:CreateKey",
+        "lakeformation:*", "states:ListStateMachines",
+        "glue:CreateSecurityConfiguration", "glue:DeleteSecurityConfiguration", "glue:GetSecurityConfiguration",
+      ]
       Resource = "*"
     },
     {

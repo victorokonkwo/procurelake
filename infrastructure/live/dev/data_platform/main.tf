@@ -25,10 +25,8 @@ locals {
   ])
 
   wheel_path = "${var.dist_dir}/${one(fileset(var.dist_dir, "procurelake-*-py3-none-any.whl"))}"
-  python_modules = [
-    for line in split("\n", file("${path.module}/../../../../jobs/glue/silver_python_modules.txt")) :
-    trimspace(line) if trimspace(line) != "" && !startswith(trimspace(line), "#")
-  ]
+  # Every pin of jobs/glue/silver_python_modules.txt as one zip of wheels (ADR 0048).
+  dependencies_bundle_path = "${var.dist_dir}/${one(fileset(var.dist_dir, "*.gluewheels.zip"))}"
 }
 
 data "terraform_remote_state" "foundation" {
@@ -117,17 +115,17 @@ locals {
 module "bronze_to_silver" {
   source = "../../../modules/glue_spark_job"
 
-  name                    = "${local.name_prefix}-bronze-to-silver"
-  description             = "Apply the latest complete PostgreSQL snapshot batch from Bronze to Silver Iceberg tables."
-  aws_account_id          = var.aws_account_id
-  script_path             = "${path.module}/../../../../jobs/glue/bronze_to_silver.py"
-  wheel_path              = local.wheel_path
-  python_modules          = local.python_modules
-  artifacts_bucket_name   = local.buckets["artifacts"]
-  kms_key_arn             = local.foundation.data_kms_key_arn
-  data_access_policy_json = local.bronze_to_silver_policy
-
-  log_group_arns = [for g in aws_cloudwatch_log_group.glue : g.arn]
+  name                        = "${local.name_prefix}-bronze-to-silver"
+  description                 = "Apply the latest complete PostgreSQL snapshot batch from Bronze to Silver Iceberg tables."
+  aws_account_id              = var.aws_account_id
+  script_path                 = "${path.module}/../../../../jobs/glue/bronze_to_silver.py"
+  wheel_path                  = local.wheel_path
+  dependencies_bundle_path    = local.dependencies_bundle_path
+  artifacts_bucket_name       = local.buckets["artifacts"]
+  kms_key_arn                 = local.foundation.data_kms_key_arn
+  data_access_policy_json     = local.bronze_to_silver_policy
+  security_configuration_name = aws_glue_security_configuration.jobs.name
+  log_kms_key_arn             = local.foundation.data_kms_key_arn
 
   job_arguments = {
     "--datalake-formats" = "iceberg"
@@ -141,9 +139,42 @@ module "bronze_to_silver" {
   }
 }
 
-# ----------------------------------------------------------------------------- shared Glue logs
-# Glue 5.x writes every job's driver/executor logs to these account-wide groups (AWS Glue docs,
-# "Logging for AWS Glue jobs"); created here once so their retention is managed.
+# ----------------------------------------------------------------------------- Glue logs
+# Every Glue job runs with this security configuration (ADR 0048). CloudWatch Logs encryption
+# uses the data key, so Glue writes each job's logs to its own
+# /aws-glue/jobs/<name>-role/<job role>/{error,output} groups (AWS Glue docs, "Logging for AWS
+# Glue jobs"), created KMS-encrypted by the glue_spark_job module. The name comes from
+# foundation, whose key policy lets CloudWatch Logs use the key for exactly those groups.
+#
+# S3 encryption stays DISABLED: Glue then sets no encryption on what it writes, and the
+# buckets' default encryption (SSE-KMS with the data key, modules/s3_lakehouse) applies as
+# before. Bookmarks are off in every job, so bookmark encryption stays DISABLED too. The
+# provider requires all three blocks.
+resource "aws_glue_security_configuration" "jobs" {
+  # checkov:skip=CKV_AWS_99: CloudWatch logs are KMS-encrypted here; S3 objects are already SSE-KMS with the data key by bucket default (modules/s3_lakehouse), and setting it in Glue would change how every data file is written; bookmarks are off in every job (ADR 0048)
+  # The foundation output exists only after foundation is applied; until then (the first plan,
+  # which CI makes for every root before any apply) the same name is derived here, so both
+  # plans agree. Foundation's KMS key policy is scoped to this name's log groups.
+  name = try(local.foundation.glue_security_configuration_name, "${local.name_prefix}-glue-jobs")
+
+  encryption_configuration {
+    cloudwatch_encryption {
+      cloudwatch_encryption_mode = "SSE-KMS"
+      kms_key_arn                = local.foundation.data_kms_key_arn
+    }
+
+    job_bookmarks_encryption {
+      job_bookmarks_encryption_mode = "DISABLED"
+    }
+
+    s3_encryption {
+      s3_encryption_mode = "DISABLED"
+    }
+  }
+}
+
+# The shared groups Glue 5.x used before the security configuration (ADR 0025). Glue no longer
+# writes to them; they are kept so earlier runs' logs stay readable until retention expires.
 resource "aws_cloudwatch_log_group" "glue" {
   for_each = toset(["/aws-glue/jobs/error", "/aws-glue/jobs/output"])
 
@@ -275,16 +306,17 @@ locals {
 module "apply_cdc" {
   source = "../../../modules/glue_spark_job"
 
-  name                    = "${local.name_prefix}-apply-cdc"
-  description             = "Apply new AWS DMS change files from Bronze to Silver Iceberg (lease + checkpoint in DynamoDB)."
-  aws_account_id          = var.aws_account_id
-  script_path             = "${path.module}/../../../../jobs/glue/apply_cdc.py"
-  wheel_path              = local.wheel_path
-  python_modules          = local.python_modules
-  artifacts_bucket_name   = local.buckets["artifacts"]
-  kms_key_arn             = local.foundation.data_kms_key_arn
-  data_access_policy_json = local.apply_cdc_policy
-  log_group_arns          = [for g in aws_cloudwatch_log_group.glue : g.arn]
+  name                        = "${local.name_prefix}-apply-cdc"
+  description                 = "Apply new AWS DMS change files from Bronze to Silver Iceberg (lease + checkpoint in DynamoDB)."
+  aws_account_id              = var.aws_account_id
+  script_path                 = "${path.module}/../../../../jobs/glue/apply_cdc.py"
+  wheel_path                  = local.wheel_path
+  dependencies_bundle_path    = local.dependencies_bundle_path
+  artifacts_bucket_name       = local.buckets["artifacts"]
+  kms_key_arn                 = local.foundation.data_kms_key_arn
+  data_access_policy_json     = local.apply_cdc_policy
+  security_configuration_name = aws_glue_security_configuration.jobs.name
+  log_kms_key_arn             = local.foundation.data_kms_key_arn
 
   job_arguments = {
     "--datalake-formats" = "iceberg"
@@ -788,17 +820,18 @@ locals {
 module "iceberg_maintenance" {
   source = "../../../modules/glue_spark_job"
 
-  name                    = local.maintenance_job
-  description             = "Daily Iceberg maintenance through Athena: retention, OPTIMIZE, VACUUM (Silver under CDC lease, Gold marts)."
-  aws_account_id          = var.aws_account_id
-  script_path             = "${path.module}/../../../../jobs/glue/iceberg_maintenance.py"
-  wheel_path              = local.wheel_path
-  python_modules          = local.python_modules
-  artifacts_bucket_name   = local.buckets["artifacts"]
-  kms_key_arn             = local.foundation.data_kms_key_arn
-  data_access_policy_json = local.maintenance_policy
-  log_group_arns          = [for g in aws_cloudwatch_log_group.glue : g.arn]
-  timeout_minutes         = 60
+  name                        = local.maintenance_job
+  description                 = "Daily Iceberg maintenance through Athena: retention, OPTIMIZE, VACUUM (Silver under CDC lease, Gold marts)."
+  aws_account_id              = var.aws_account_id
+  script_path                 = "${path.module}/../../../../jobs/glue/iceberg_maintenance.py"
+  wheel_path                  = local.wheel_path
+  dependencies_bundle_path    = local.dependencies_bundle_path
+  artifacts_bucket_name       = local.buckets["artifacts"]
+  kms_key_arn                 = local.foundation.data_kms_key_arn
+  data_access_policy_json     = local.maintenance_policy
+  security_configuration_name = aws_glue_security_configuration.jobs.name
+  log_kms_key_arn             = local.foundation.data_kms_key_arn
+  timeout_minutes             = 60
 
   job_arguments = {
     "--workgroup"              = local.athena_wg

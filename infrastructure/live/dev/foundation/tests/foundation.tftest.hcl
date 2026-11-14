@@ -32,6 +32,22 @@ run "wires_key_buckets_and_roles" {
   }
 }
 
+run "data_key_may_encrypt_only_the_glue_job_log_groups" {
+  command = apply
+
+  assert {
+    condition     = output.glue_security_configuration_name == "procurelake-dev-glue-jobs"
+    error_message = "data_platform names its Glue security configuration from this output."
+  }
+  assert {
+    condition = anytrue([for st in jsondecode(module.data_key.policy_for_test).Statement :
+      length(st.Condition.ArnLike["kms:EncryptionContext:aws:logs:arn"]) == 1 &&
+      endswith(st.Condition.ArnLike["kms:EncryptionContext:aws:logs:arn"][0], ":log-group:/aws-glue/jobs/procurelake-dev-glue-jobs-role/*")
+    if st.Sid == "CloudWatchLogsEncryptLogGroups"])
+    error_message = "CloudWatch Logs may use the data key only for the Glue job log groups of the security configuration."
+  }
+}
+
 run "wires_catalog_and_workgroup" {
   command = apply
 

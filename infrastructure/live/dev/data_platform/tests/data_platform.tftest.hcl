@@ -44,14 +44,15 @@ override_data {
         products  = "procurelake-dev-products-123456789012-ca-central-1"
         artifacts = "procurelake-dev-artifacts-123456789012-ca-central-1"
       }
-      data_kms_key_arn           = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
-      silver_database_name       = "procurelake_dev_silver"
-      gold_database_name         = "procurelake_dev_gold"
-      bench_silver_database_name = "procurelake_dev_bench_silver"
-      bench_gold_database_name   = "procurelake_dev_bench_gold"
-      athena_workgroup_name      = "procurelake-dev-engineering"
-      data_engineer_role_arn     = "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"
-      ingestion_role_arn         = "arn:aws:iam::123456789012:role/procurelake-dev-ingestion"
+      data_kms_key_arn                 = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+      silver_database_name             = "procurelake_dev_silver"
+      gold_database_name               = "procurelake_dev_gold"
+      bench_silver_database_name       = "procurelake_dev_bench_silver"
+      bench_gold_database_name         = "procurelake_dev_bench_gold"
+      athena_workgroup_name            = "procurelake-dev-engineering"
+      data_engineer_role_arn           = "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"
+      ingestion_role_arn               = "arn:aws:iam::123456789012:role/procurelake-dev-ingestion"
+      glue_security_configuration_name = "procurelake-dev-glue-jobs"
     }
   }
 }
@@ -79,8 +80,69 @@ run "silver_job_is_wired_to_the_glue_iceberg_catalog" {
     error_message = "The job must write the foundation's Silver database."
   }
   assert {
-    condition     = strcontains(module.bronze_to_silver.job_arguments_for_test["--additional-python-modules"], ",pydantic==") && strcontains(module.bronze_to_silver.job_arguments_for_test["--additional-python-modules"], ",pyyaml==")
-    error_message = "Pins from jobs/glue/silver_python_modules.txt must be passed to the job."
+    condition     = endswith(module.bronze_to_silver.job_arguments_for_test["--additional-python-modules"], "/procurelake-glue-dependencies.gluewheels.zip") && !strcontains(module.bronze_to_silver.job_arguments_for_test["--additional-python-modules"], "==")
+    error_message = "The job must install its pins from the zip of wheels in dist_dir, not from PyPI."
+  }
+}
+
+run "every_glue_job_encrypts_its_logs_with_the_data_key" {
+  command = apply
+
+  assert {
+    condition = (
+      aws_glue_security_configuration.jobs.name == "procurelake-dev-glue-jobs" &&
+      aws_glue_security_configuration.jobs.encryption_configuration[0].cloudwatch_encryption[0].cloudwatch_encryption_mode == "SSE-KMS" &&
+      aws_glue_security_configuration.jobs.encryption_configuration[0].cloudwatch_encryption[0].kms_key_arn == "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+    )
+    error_message = "The security configuration takes foundation's name (the key policy names its log groups) and encrypts CloudWatch Logs with the data key."
+  }
+  assert {
+    condition = (
+      aws_glue_security_configuration.jobs.encryption_configuration[0].s3_encryption[0].s3_encryption_mode == "DISABLED" &&
+      aws_glue_security_configuration.jobs.encryption_configuration[0].job_bookmarks_encryption[0].job_bookmarks_encryption_mode == "DISABLED"
+    )
+    error_message = "S3 writes keep the buckets' default SSE-KMS encryption; bookmarks are off."
+  }
+  assert {
+    condition = alltrue([
+      for m in [module.bronze_to_silver, module.apply_cdc, module.iceberg_maintenance, module.reference_to_silver, module.bench_bronze_to_silver, module.partition_evolution] :
+      m.log_group_names["error"] == "/aws-glue/jobs/procurelake-dev-glue-jobs-role/${m.job_name}/error" &&
+      m.log_group_names["output"] == "/aws-glue/jobs/procurelake-dev-glue-jobs-role/${m.job_name}/output"
+    ])
+    error_message = "Every Glue job must have its log groups under the security configuration's names."
+  }
+}
+
+# CI plans every root before any apply, so the first plan sees a foundation state without the
+# new output (ADR 0048). The same name must be derived, so the plan works and matches.
+run "security_configuration_name_works_before_foundation_has_the_output" {
+  command = plan
+
+  override_data {
+    target = data.terraform_remote_state.foundation
+    values = {
+      outputs = {
+        bucket_names = {
+          raw       = "procurelake-dev-raw-123456789012-ca-central-1"
+          lake      = "procurelake-dev-lake-123456789012-ca-central-1"
+          products  = "procurelake-dev-products-123456789012-ca-central-1"
+          artifacts = "procurelake-dev-artifacts-123456789012-ca-central-1"
+        }
+        data_kms_key_arn           = "arn:aws:kms:ca-central-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+        silver_database_name       = "procurelake_dev_silver"
+        gold_database_name         = "procurelake_dev_gold"
+        bench_silver_database_name = "procurelake_dev_bench_silver"
+        bench_gold_database_name   = "procurelake_dev_bench_gold"
+        athena_workgroup_name      = "procurelake-dev-engineering"
+        data_engineer_role_arn     = "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"
+        ingestion_role_arn         = "arn:aws:iam::123456789012:role/procurelake-dev-ingestion"
+      }
+    }
+  }
+
+  assert {
+    condition     = aws_glue_security_configuration.jobs.name == "procurelake-dev-glue-jobs"
+    error_message = "Without the foundation output, the security configuration name must be derived the same way."
   }
 }
 

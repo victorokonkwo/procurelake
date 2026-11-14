@@ -113,4 +113,11 @@ run "deploy_role_is_scoped_not_admin" {
     s.Effect == "Deny" && contains(flatten([s.Action]), "s3:GetObject") && contains(flatten([s.Action]), "s3:DeleteObject")])
     error_message = "The deploy role must never read, write or delete lake data objects."
   }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_iam_role_policy.github_deploy_dev.policy).Statement :
+      s.Sid == "UnscopableActions" && s.Resource == "*" &&
+      contains(s.Action, "glue:CreateSecurityConfiguration") && contains(s.Action, "glue:DeleteSecurityConfiguration") &&
+    !contains(s.Action, "glue:*")])
+    error_message = "The deploy role manages the Glue security configuration (no resource type, ADR 0048) and nothing else of Glue unscoped."
+  }
 }

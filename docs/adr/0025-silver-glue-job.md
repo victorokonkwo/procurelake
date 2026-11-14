@@ -24,7 +24,8 @@ Glue 5.1 against dev Bronze, with the Silver tables queryable in Athena.
 4. **Dependencies are exact.**
    - `--additional-python-modules` installs the wheel plus the pins in
      `jobs/glue/silver_python_modules.txt` (the pydantic and PyYAML closure). It uses
-     `--python-modules-installer-option --no-deps`.
+     `--python-modules-installer-option --no-deps`. Since ADR 0048 the pins are installed from
+     a zip of wheels in the artifacts bucket with `--no-index --no-deps`, not from PyPI.
    - boto3 and botocore come from the Glue runtime. psycopg and requests are not installed.
    - Tests check the pins against `uv.lock`, check the closure is complete, and check that the
      job imports without psycopg or requests.
@@ -54,15 +55,20 @@ Glue 5.1 against dev Bronze, with the Silver tables queryable in Athena.
      Spark's file committer renames its output there.
 9. **Stacks.** The job lives in a new root, `live/dev/data_platform`, which reads foundation
    outputs through `terraform_remote_state`. The Glue log groups `/aws-glue/jobs/{error,output}`
-   are managed there with 30-day retention.
+   are managed there with 30-day retention. Since ADR 0048 each job logs to its own
+   KMS-encrypted groups under a Glue security configuration; the shared groups keep only
+   earlier runs.
 
 ## Consequences
 - **Live-run evidence:** `docs/evidence/sprint1-week3-silver-live.md`.
-- **Cost:** the measured run cost is in the evidence. The pinned modules are downloaded from PyPI
-  each time a run starts. Hosting dependency wheels in S3 is open question 32.
+- **Cost:** the measured run cost is in the evidence. The pinned modules were downloaded from
+  PyPI each time a run started. Open question 32 was resolved by ADR 0048: the wheels are hosted
+  in the artifacts bucket and installed with `--no-index`.
 - **Glue 6.0** is listed by the AWS Pricing API at $0.308/DPU-hour in ca-central-1, against
-  $0.44 for 5.1. Moving would change the runtime versions in ADR 0015 (open question 31; the owner chose to stay on 5.1, ADR 0047).
-- **Log encryption:** the log groups use CloudWatch default encryption, not the platform KMS key
-  (open question 33).
+  $0.44 for 5.1. Moving would change the runtime versions in ADR 0015 (open question 31; the
+  owner chose to stay on 5.1, ADR 0047).
+- **Log encryption:** the log groups used CloudWatch default encryption, not the platform KMS
+  key. Open question 33 was resolved by ADR 0048: a Glue security configuration encrypts job
+  logs with the data key.
 - **Not covered:** USAspending is not built into Silver yet. This job covers the operational
   (PostgreSQL) tables only.

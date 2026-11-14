@@ -8,6 +8,11 @@ output "data_kms_key_arn" {
   value       = module.data_key.key_arn
 }
 
+output "glue_security_configuration_name" {
+  description = "Name of the Glue security configuration whose job log groups the data key may encrypt (ADR 0048)."
+  value       = local.glue_security_configuration_name
+}
+
 output "ingestion_role_arn" {
   description = "Role for landing raw data in Bronze."
   value       = module.iam.ingestion_role_arn
