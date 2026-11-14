@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -46,6 +47,32 @@ def test_pins_cover_the_dependency_closure_of_pydantic_and_pyyaml():
             closure.add(name)
             todo.extend(d["name"] for d in locked[name].get("dependencies", []))
     assert closure == set(_pins())
+
+
+def test_glue_wheel_target_builds_the_dependency_bundle_for_ci():
+    # CI (scripts/ci/terraform_dev.sh) runs `make glue-wheel` before planning data_platform,
+    # which uploads both files from dist/ (ADR 0048).
+    makefile = (REPO / "Makefile").read_text()
+    recipe = makefile.split("\nglue-wheel:", 1)[1].split("\n\n", 1)[0]
+    assert "uv build --wheel --out-dir dist" in recipe
+    assert "glue_dependencies.py --out dist/procurelake-glue-dependencies.gluewheels.zip" in recipe
+    ci = (REPO / "scripts" / "ci" / "terraform_dev.sh").read_text()
+    assert "make glue-wheel" in ci
+
+
+def test_wheel_build_is_reproducible(tmp_path):
+    # The deploy plan is fingerprinted and re-planned before apply (ADR 0035): the wheel's
+    # bytes, hence its S3 key, must not change between two builds of the same commit.
+    uv = shutil.which("uv")
+    assert uv, "uv must be on PATH to build the wheel"
+    digests = []
+    for out in (tmp_path / "1", tmp_path / "2"):
+        subprocess.run(  # noqa: S603 - fixed arguments
+            [uv, "build", "--wheel", "--out-dir", str(out)], check=True, cwd=REPO, capture_output=True
+        )
+        [wheel] = out.glob("procurelake-*.whl")
+        digests.append(hashlib.sha256(wheel.read_bytes()).hexdigest())
+    assert digests[0] == digests[1]
 
 
 def test_job_imports_without_psycopg_or_requests():

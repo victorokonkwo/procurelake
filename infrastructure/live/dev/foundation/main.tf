@@ -4,6 +4,11 @@
 
 locals {
   name_prefix = "procurelake-dev"
+
+  # Glue security configuration of every dev Glue job (created in dev/data_platform, ADR 0048).
+  # Under it, Glue writes job logs to /aws-glue/jobs/<name>-role/<job role>/{error,output}
+  # (AWS Glue docs, "Logging for AWS Glue jobs"); those groups are encrypted with the data key.
+  glue_security_configuration_name = "${local.name_prefix}-glue-jobs"
 }
 
 module "data_key" {
@@ -14,6 +19,9 @@ module "data_key" {
 
   # CloudWatch alarms and EventBridge rules publish to the KMS-encrypted alerts topic (Week 8).
   sns_publishing_services = ["cloudwatch", "events"]
+
+  # CloudWatch Logs encrypts the Glue job log groups with the key (ADR 0048).
+  cloudwatch_logs_log_group_patterns = ["/aws-glue/jobs/${local.glue_security_configuration_name}-role/*"]
 }
 
 module "lakehouse" {

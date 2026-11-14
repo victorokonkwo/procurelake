@@ -107,9 +107,10 @@ dev-foundation-plan: ## Plan dev/foundation (needs AWS credentials, backend.hcl,
 	terraform -chdir=infrastructure/live/dev/foundation plan -input=false -out=foundation.tfplan
 
 .PHONY: glue-wheel
-glue-wheel: ## Build the procurelake wheel deployed to Glue (reproducible; dist/ holds only this wheel)
+glue-wheel: ## Build the procurelake wheel and the dependency bundle (.gluewheels.zip from uv.lock) deployed to Glue (reproducible; dist/ holds only these two)
 	rm -rf dist
 	uv build --wheel --out-dir dist
+	uv run --no-project python src/procurelake/lakehouse/glue_dependencies.py --out dist/procurelake-glue-dependencies.gluewheels.zip
 
 DBT_DIGEST_FILE := build/dbt_runner.digest
 TASK_DIGEST_FILE := build/task_runner.digest

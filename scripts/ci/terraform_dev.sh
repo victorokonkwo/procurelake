@@ -28,7 +28,7 @@ ROOTS=(foundation data_platform security observability)
 SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 
-make glue-wheel >/dev/null # data_platform uploads it; builds are reproducible (ADR 0025)
+make glue-wheel >/dev/null # wheel + dependency bundle, uploaded by data_platform; reproducible (ADR 0025, ADR 0048)
 
 total=0
 for root in "${ROOTS[@]}"; do

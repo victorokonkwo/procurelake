@@ -1,6 +1,8 @@
 # Python packages the Silver Glue job installs on top of the AWS Glue 5.1 runtime, besides the
-# procurelake wheel. Installed with pip --no-deps, so this list must be complete and exact:
-# tests/unit/test_glue_packaging.py checks it against uv.lock and the job's imports.
+# procurelake wheel. `make glue-wheel` bundles these exact versions' wheels from uv.lock into
+# dist/procurelake-glue-dependencies.gluewheels.zip, installed with pip --no-index --no-deps
+# (ADR 0048), so this list must be complete and exact:
+# tests/unit/lakehouse/test_glue_packaging.py checks it against uv.lock and the job's imports.
 # boto3/botocore come from the Glue runtime; psycopg and requests are not used by the job.
 pydantic==2.14.3
 pydantic-core==2.50.4

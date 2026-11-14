@@ -78,16 +78,17 @@ locals {
 module "reference_to_silver" {
   source = "../../../modules/glue_spark_job"
 
-  name                    = local.reference_to_silver_job
-  description             = "Apply pending USAspending batches from Bronze to the current-state Silver Iceberg table (ADR 0044)."
-  aws_account_id          = var.aws_account_id
-  script_path             = "${path.module}/../../../../jobs/glue/reference_to_silver.py"
-  wheel_path              = local.wheel_path
-  python_modules          = local.python_modules
-  artifacts_bucket_name   = local.buckets["artifacts"]
-  kms_key_arn             = local.foundation.data_kms_key_arn
-  data_access_policy_json = local.reference_to_silver_policy
-  log_group_arns          = [for g in aws_cloudwatch_log_group.glue : g.arn]
+  name                        = local.reference_to_silver_job
+  description                 = "Apply pending USAspending batches from Bronze to the current-state Silver Iceberg table (ADR 0044)."
+  aws_account_id              = var.aws_account_id
+  script_path                 = "${path.module}/../../../../jobs/glue/reference_to_silver.py"
+  wheel_path                  = local.wheel_path
+  dependencies_bundle_path    = local.dependencies_bundle_path
+  artifacts_bucket_name       = local.buckets["artifacts"]
+  kms_key_arn                 = local.foundation.data_kms_key_arn
+  data_access_policy_json     = local.reference_to_silver_policy
+  security_configuration_name = aws_glue_security_configuration.jobs.name
+  log_kms_key_arn             = local.foundation.data_kms_key_arn
 
   job_arguments = {
     "--datalake-formats" = "iceberg"

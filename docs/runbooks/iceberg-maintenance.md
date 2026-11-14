@@ -18,13 +18,24 @@ aws s3 ls s3://procurelake-dev-artifacts-<account>-ca-central-1/iceberg_maintena
 aws s3 cp s3://…/iceberg_maintenance/run_date=<date>/<job run id>.json - | jq '.failed, (.tables[] | select(.status=="failed") | {table, error})'
 ```
 
-No report means the job failed before writing one (arguments, IAM, the wheel). Read the Glue
-run's error and the `/aws-glue/jobs/error` log group:
+No report means the job failed before writing one (arguments, IAM, the wheel or the dependency
+bundle). Read the Glue run's error and the job's error log group. Glue jobs run with the
+`procurelake-dev-glue-jobs` security configuration (ADR 0048), so each job logs to its own
+KMS-encrypted groups `/aws-glue/jobs/procurelake-dev-glue-jobs-role/<job name>/{error,output}`,
+not the shared `/aws-glue/jobs/{error,output}` (those hold only runs from before ADR 0048).
+Reading them needs `kms:Decrypt` on the dev data key.
 
 ```bash
 aws glue get-job-run --job-name procurelake-dev-iceberg-maintenance --run-id <id> \
   --query 'JobRun.[JobRunState,ErrorMessage]'
+aws logs filter-log-events \
+  --log-group-name /aws-glue/jobs/procurelake-dev-glue-jobs-role/procurelake-dev-iceberg-maintenance/error \
+  --log-stream-name-prefix <id> --query 'events[].message' --output text
 ```
+
+A pip error at the start of the run (`No matching distribution found`) means a pinned package is
+missing from the dependency bundle: the job installs with `--no-index`, so it cannot fall back to
+PyPI. Rebuild with `make glue-wheel` and apply data_platform.
 
 ## 2. Common causes
 

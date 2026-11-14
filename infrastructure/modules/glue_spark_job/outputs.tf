@@ -23,6 +23,16 @@ output "wheel_sha256" {
   value       = local.wheel_sha256
 }
 
+output "dependencies_uri" {
+  description = "S3 URI of the deployed dependency bundle."
+  value       = "s3://${var.artifacts_bucket_name}/${aws_s3_object.dependencies.key}"
+}
+
+output "log_group_names" {
+  description = "The job's log groups, by stream (error, output)."
+  value       = { for k, g in aws_cloudwatch_log_group.job : k => g.name }
+}
+
 output "job_arguments_for_test" {
   description = "Effective default arguments (asserted by the root module's offline tests)."
   value       = aws_glue_job.this.default_arguments

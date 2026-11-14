@@ -40,3 +40,14 @@ variable "sns_publishing_services" {
     error_message = "Only cloudwatch and events are expected to publish to the platform's encrypted topics."
   }
 }
+
+variable "cloudwatch_logs_log_group_patterns" {
+  description = "Log group names (ArnLike wildcards allowed) of this account and region that CloudWatch Logs may encrypt with the key (ADR 0048)."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for p in var.cloudwatch_logs_log_group_patterns : can(regex("^/[A-Za-z0-9_/.#*-]+$", p)) && p != "/*"])
+    error_message = "Each pattern must be an absolute log group name, optionally with wildcards, and not every log group."
+  }
+}
