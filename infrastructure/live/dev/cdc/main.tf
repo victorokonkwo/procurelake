@@ -119,13 +119,21 @@ resource "aws_scheduler_schedule" "cdc_processing" {
 
 # ----------------------------------------------------------------------------- DMS monitoring
 # Week 8 (implementation plan E): a stopped or stalled DMS task is a *silent* failure. The CDC
-# schedule keeps succeeding with nothing new to apply while Silver and Gold go stale. Two
-# signals reach the alerts topic (its KMS key and policy allow CloudWatch and EventBridge):
+# schedule keeps succeeding with nothing new to apply while Silver and Gold go stale. Three
+# signals reach the alerts topic (its KMS key and policy allow CloudWatch and EventBridge, for
+# alarms and rules named procurelake-dev-*):
 #
-#   - CDCLatencySource above 5 minutes, with missing data treated as breaching: a stopped task
-#     publishes no task metrics at all, so silence is an alarm too.
-#   - Every replication task state change or failure (EventBridge, best effort per AWS).
+#   - CDCLatencySource above 5 minutes while the task publishes metrics (a running task that
+#     lags). Missing data is "missing" (ADR 0050, open question 39b): the alarm no longer fires
+#     at stack creation, before the new task has published anything, and a stopped task leaves
+#     it in INSUFFICIENT_DATA (no notification) instead of ALARM.
+#   - A dedicated rule for the task stopping or failing (ADR 0050, open question 39a). In the
+#     Week 8 drill the EventBridge stop event arrived within a minute, against 11.8 minutes for
+#     the latency alarm, so it is now the alarm for a silent stop.
+#   - Every replication task state change (EventBridge, informational), kept as the fallback in
+#     case the stopped rule's event fields do not match (see below).
 #
+# DMS delivers its EventBridge events on a best-effort basis (EventBridge events reference).
 # They live here so they exist only while the task does (an absent task must not alarm).
 locals {
   alerts_arn = try(data.terraform_remote_state.data_platform.outputs.pipeline_alerts_topic_arn, null)
@@ -136,7 +144,7 @@ resource "aws_cloudwatch_metric_alarm" "dms_source_latency" {
   count = local.monitor ? 1 : 0
 
   alarm_name          = "${local.name}-dms-source-latency"
-  alarm_description   = "DMS has not captured source changes for over 5 minutes, or the task publishes no metrics (stopped). Gold goes stale silently. Runbook: docs/runbooks/cdc-dms-stall.md"
+  alarm_description   = "DMS is running but has not captured source changes for over 5 minutes; Gold goes stale silently. Missing data is not an alarm (no notification at stack creation): a stopped task shows INSUFFICIENT_DATA here and alerts through the rule procurelake-dev-cdc-dms-task-stopped (ADR 0050). Runbook: docs/runbooks/cdc-dms-stall.md"
   namespace           = "AWS/DMS"
   metric_name         = "CDCLatencySource"
   statistic           = "Maximum"
@@ -145,7 +153,7 @@ resource "aws_cloudwatch_metric_alarm" "dms_source_latency" {
   datapoints_to_alarm = 5
   comparison_operator = "GreaterThanThreshold"
   threshold           = 300
-  treat_missing_data  = "breaching"
+  treat_missing_data  = "missing"
   dimensions          = module.dms[0].cloudwatch_task_dimensions
   alarm_actions       = [local.alerts_arn]
   ok_actions          = [local.alerts_arn]
@@ -177,5 +185,53 @@ resource "aws_cloudwatch_event_target" "dms_task_state" {
       task    = "$.resources[0]"
     }
     input_template = "\"ProcureLake dev CDC: DMS task event <event> at <time>: <message> (task <task>). Runbook: docs/runbooks/cdc-dms-stall.md\""
+  }
+}
+
+# Open question 39a (owner decision 2026-11-14, ADR 0050): alarm on the task stopping or
+# failing. The AWS DMS User Guide ("Working with Amazon EventBridge events and notifications")
+# documents the event shape (source aws.dms, detail-type "DMS Replication Task State Change",
+# detail.category, detail.eventType, e.g. REPLICATION_TASK_STARTED) and the event IDs
+# DMS-EVENT-0079 (Replication task stopped, StateChange) and DMS-EVENT-0078 (A replication task
+# has failed, Failure). It does not show a stopped or failed sample event, so the exact
+# detail.eventType value for a stop and the field that carries the event ID are not in the
+# docs. The pattern therefore matches any one of: the Failure category, the eventType names
+# that follow the documented REPLICATION_TASK_<STATE> form, or the event IDs. A branch whose
+# field is absent simply never matches. The first live stop (make cdc-stall-drill) must show
+# this rule matched (AWS/Events MatchedEvents for the rule); until then the state-change rule
+# above still reports every stop.
+resource "aws_cloudwatch_event_rule" "dms_task_stopped" {
+  count = local.monitor ? 1 : 0
+
+  name        = "${local.name}-dms-task-stopped"
+  description = "ALARM: the dev CDC replication task stopped or failed; Silver and Gold go stale until it is resumed."
+  event_pattern = jsonencode({
+    source        = ["aws.dms"]
+    "detail-type" = ["DMS Replication Task State Change"]
+    resources     = [module.dms[0].replication_task_arn]
+    detail = {
+      "$or" = [
+        { category = ["Failure"] },
+        { eventType = ["REPLICATION_TASK_STOPPED", "REPLICATION_TASK_FAILED"] },
+        { eventId = ["DMS-EVENT-0079", "DMS-EVENT-0078"] },
+      ]
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "dms_task_stopped" {
+  count = local.monitor ? 1 : 0
+
+  rule = aws_cloudwatch_event_rule.dms_task_stopped[0].name
+  arn  = local.alerts_arn
+
+  input_transformer {
+    input_paths = {
+      event   = "$.detail.eventType"
+      message = "$.detail.detailMessage"
+      time    = "$.time"
+      task    = "$.resources[0]"
+    }
+    input_template = "\"ALARM ProcureLake dev CDC: the DMS replication task stopped or failed at <time> (<event>: <message>; task <task>). Changes are not reaching Bronze, Silver or Gold. Runbook: docs/runbooks/cdc-dms-stall.md\""
   }
 }

@@ -42,7 +42,8 @@ nothing to apply.
    - Every alarm notifies the alerts topic on ALARM and on OK, and names its runbook.
 3. **DMS alarms in `dev/cdc`**, created and destroyed with the task.
    - `CDCLatencySource` over 300 s for 5 of 5 one-minute periods, with **missing data
-     breaching**, because a stopped task publishes nothing.
+     breaching**, because a stopped task publishes nothing. (ADR 0050: now `missing`; a stop
+     alerts through a dedicated EventBridge rule instead.)
    - An EventBridge rule for `DMS Replication Task State Change` on this task, with an input
      transformer naming the runbook.
    - The metric dimensions are `ReplicationInstanceIdentifier` (the instance id) and
@@ -67,7 +68,9 @@ nothing to apply.
   - Recovery needed one command (`resume-processing`), and all 25 stalled changes reached Gold
     5.8 minutes later, with no loss and no duplicates.
   - The freshness alarm flagged the backlog batch: 921.7 s against 900 s.
-- **Three tuning findings stay open** (open question 39):
+- **Three tuning findings** (open question 39; decided and built in ADR 0050, not yet
+  verified live: a stopped/failed task rule, missing data no longer breaching on the latency
+  alarm, and the freshness alarm's OK documented as "time passed"):
   - the latency alarm was slower than its configuration suggests;
   - it fires once when the stack is created;
   - the freshness alarm cleared by itself 15 minutes after the late batch, with no newer

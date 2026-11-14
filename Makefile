@@ -305,6 +305,10 @@ cdc-plan: ## Plan dev/cdc phase 1 (network, RDS, secrets); PHASE=2 adds DMS (nee
 	terraform -chdir=$(CDC_TF) init -input=false -backend-config=backend.hcl
 	terraform -chdir=$(CDC_TF) plan -input=false -var enable_dms=$(if $(filter 2,$(PHASE)),true,false) -out=cdc.tfplan
 
+.PHONY: rds-ca-check
+rds-ca-check: ## Compare the committed RDS CA bundle (ca-central-1) and today's AWS download with the pinned SHA-256 (ADR 0050; no AWS credentials)
+	uv run python scripts/aws/rds_ca_check.py
+
 .PHONY: cdc-source-setup
 cdc-source-setup: ## Migrate + seed the RDS source and create the DMS user (after phase 1 apply)
 	uv run python scripts/aws/cdc_source_setup.py \
@@ -370,13 +374,14 @@ cdc-failure-drill: ## Week 6, live: hold the invoices lease, watch a scheduled r
 	  --gold-database $$($(TFOUT) -raw gold_database_name)
 
 .PHONY: cdc-stall-drill
-cdc-stall-drill: ## Week 8, live: stop DMS, commit changes, alarm must fire; resume, all changes reach Gold, alarm clears
+cdc-stall-drill: ## Week 8, live: stop DMS, commit changes, the task-stopped rule must alert; resume, all changes reach Gold, latency alarm OK
 	uv run python scripts/aws/cdc_stall_drill.py \
 	  --host $$($(CDCOUT) -raw source_address) --port $$($(CDCOUT) -raw source_port) \
 	  --database $$($(CDCOUT) -raw source_database_name) \
 	  --master-secret-arn $$($(CDCOUT) -raw master_user_secret_arn) \
 	  --task-arn $$($(CDCOUT) -raw replication_task_arn) \
 	  --alarm-name procurelake-dev-cdc-dms-source-latency \
+	  --stopped-rule-name procurelake-dev-cdc-dms-task-stopped \
 	  --state-machine-arn $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw cdc_processing_state_machine_arn) \
 	  --alerts-topic-arn $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw pipeline_alerts_topic_arn) \
 	  --engineer-role-arn $$($(TFOUT) -raw data_engineer_role_arn) \

@@ -30,6 +30,7 @@ from psycopg.rows import dict_row
 
 from procurelake.common.athena import run_query
 from procurelake.common.aws_clients import build_session
+from procurelake.common.rds_tls import rds_conninfo
 
 pytestmark = pytest.mark.aws
 
@@ -54,14 +55,13 @@ def cdc(engineer_session, dev_env):
         .client("secretsmanager")
         .get_secret_value(SecretId=os.environ["PROCURELAKE_CDC_MASTER_SECRET_ARN"])["SecretString"]
     )
-    dsn = psycopg.conninfo.make_conninfo(
-        host=os.environ["PROCURELAKE_CDC_HOST"],
-        port=int(os.environ.get("PROCURELAKE_CDC_PORT", "5432")),
-        dbname=os.environ["PROCURELAKE_CDC_DATABASE"],
-        user=secret["username"],
-        password=secret["password"],
-        sslmode="require",
-        connect_timeout=15,
+    # verify-full against the pinned RDS CA bundle, as the operator scripts (ADR 0050).
+    dsn = rds_conninfo(
+        os.environ["PROCURELAKE_CDC_HOST"],
+        int(os.environ.get("PROCURELAKE_CDC_PORT", "5432")),
+        os.environ["PROCURELAKE_CDC_DATABASE"],
+        secret["username"],
+        secret["password"],
     )
     return {
         "dsn": dsn,

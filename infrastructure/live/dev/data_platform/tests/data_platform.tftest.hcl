@@ -243,6 +243,43 @@ run "state_machines_fail_loudly_and_retry_only_idempotent_work" {
   }
 }
 
+run "cdc_builds_only_queued_tables_and_a_daily_full_build_remains" {
+  command = apply
+
+  variables {
+    dbt_image_digest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  }
+
+  # ADR 0050 (open question 40).
+  assert {
+    condition     = jsondecode(aws_sfn_state_machine.cdc_processing[0].definition).States.ReadGoldQueue.Parameters.TableName == "procurelake-dev-cdc-checkpoints" && jsondecode(aws_sfn_state_machine.cdc_processing[0].definition).States.AnythingQueued.Default == "NothingToBuild"
+    error_message = "cdc_processing reads the Gold build queue and skips dbt when nothing is queued."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_iam_role_policy.cdc_processing[0].policy).Statement :
+      s.Sid == "GoldBuildQueue" && toset(s.Action) == toset(["dynamodb:GetItem", "dynamodb:UpdateItem"])
+    && s.Condition["ForAllValues:StringEquals"]["dynamodb:LeadingKeys"] == ["gold#cdc"]])
+    error_message = "cdc_processing may read and update only the Gold build queue item."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(local.apply_cdc_policy).Statement :
+    s.Sid == "UseCheckpointTable" && contains(s.Action, "dynamodb:UpdateItem")])
+    error_message = "The apply job queues tables with an Update in the checkpoint transaction."
+  }
+  assert {
+    condition     = jsondecode(aws_sfn_state_machine.dbt_transformation[0].definition).States.ApplyDefaults.Parameters.defaults.changed_silver == "all"
+    error_message = "dbt_transformation builds the whole project unless told which Silver tables changed."
+  }
+  assert {
+    condition     = aws_scheduler_schedule.dbt_full_build[0].schedule_expression == "cron(40 7 * * ? *)" && aws_scheduler_schedule.dbt_full_build[0].schedule_expression_timezone == "America/Toronto" && jsondecode(aws_scheduler_schedule.dbt_full_build[0].target[0].input).changed_silver == "all"
+    error_message = "A daily full dbt build is scheduled (07:40 Toronto, before the 08:00 data-quality dbt test)."
+  }
+  assert {
+    condition     = jsondecode(aws_iam_role_policy.dbt_scheduler[0].policy).Statement[0].Resource == aws_sfn_state_machine.dbt_transformation[0].arn
+    error_message = "The dbt scheduler may start only dbt_transformation."
+  }
+}
+
 run "ai_extraction_is_limited_to_the_canada_profile_and_its_own_paths" {
   command = apply
 

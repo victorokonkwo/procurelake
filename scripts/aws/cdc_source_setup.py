@@ -22,6 +22,7 @@ import psycopg
 from procurelake.cdc.source_setup import replication_user_privileges, setup_replication_user
 from procurelake.common.aws_clients import DEFAULT_REGION, build_session
 from procurelake.common.postgres_migrations import apply_migrations
+from procurelake.common.rds_tls import rds_conninfo
 from procurelake.data_generator.config import load_config
 from procurelake.data_generator.generate import generate_dataset
 from procurelake.data_generator.load import load_dataset, table_counts
@@ -46,17 +47,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sm = build_session(region=args.region).client("secretsmanager")
     master, replication = _secret(sm, args.master_secret_arn), _secret(sm, args.replication_secret_arn)
-    # TLS is required by the parameter group (rds.force_ssl=1). The server certificate is not
-    # verified against the RDS CA bundle yet (ADR 0027, known gap).
-    dsn = psycopg.conninfo.make_conninfo(
-        host=args.host,
-        port=args.port,
-        dbname=args.database,
-        user=master["username"],
-        password=master["password"],
-        sslmode="require",
-        connect_timeout=15,
-    )
+    # TLS is required by the parameter group (rds.force_ssl=1), and the client verifies the
+    # server certificate and host name against the pinned RDS CA bundle (verify-full, ADR 0050).
+    dsn = rds_conninfo(args.host, args.port, args.database, master["username"], master["password"])
 
     with psycopg.connect(dsn, autocommit=True) as conn:
         wal_level = conn.execute("SHOW wal_level").fetchone()[0]

@@ -195,6 +195,12 @@ variable "schedule_canada_contracts" {
   default     = "cron(30 7 ? * MON *)"
 }
 
+variable "schedule_dbt_full_build" {
+  description = "Schedule for the daily full dbt build (ADR 0050; America/Toronto): after the 07:00 USAspending ingestion and before the 08:00 data-quality dbt test. Empty disables it."
+  type        = string
+  default     = "cron(40 7 * * ? *)"
+}
+
 variable "schedule_data_quality" {
   description = "Schedule for the daily data-quality checks (after maintenance 03:30 and tenant exports 06:00); empty disables it."
   type        = string

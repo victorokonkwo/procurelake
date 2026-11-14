@@ -68,8 +68,10 @@ On 2026-11-10 the project owner decided:
     ListBucket blocked every upload. The role now has unconditioned ListBucket on the raw bucket, as
     the DMS docs list; it still cannot read or delete objects.
 - **Known gaps:**
-  - The operator scripts use `sslmode=require` and do not verify the RDS certificate against the
-    RDS CA bundle.
+  - ~~The operator scripts use `sslmode=require` and do not verify the RDS certificate against
+    the RDS CA bundle.~~ Resolved by ADR 0050 (open question 37): they connect with
+    `sslmode=verify-full` against the committed, SHA-256-pinned ca-central-1 bundle. DMS's own
+    source endpoint still uses `ssl_mode = "require"`.
   - DMS logs go to `dms-tasks-<instance>` with default retention.
 - **Next (C3–C5):** the CDC apply engine into Silver, with a DynamoDB checkpoint and lease, replay
   and recovery tests, and the freshness gate.

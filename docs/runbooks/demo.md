@@ -12,8 +12,9 @@ not SOVRA customers. Award amounts are **awarded value, not spend**.
    - `make cdc-source-setup`;
    - `make cdc-plan PHASE=2`, then apply.
 2. Wait for the DMS task to be `running` with the full load complete, about 3 minutes.
-3. Check that `make demo STEP=health` shows no alarm in `ALARM`. The DMS latency alarm can fire
-   once at stack creation (open question 39b).
+3. Check that `make demo STEP=health` shows no alarm in `ALARM`. The DMS latency alarm shows
+   INSUFFICIENT_DATA until the task publishes metrics; since ADR 0050 it no longer fires at
+   stack creation.
 4. Open the dashboard link that `STEP=health` prints, in a browser tab.
 5. Credentials: `.env` holds `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. The Makefile loads
    it, and `AWS_REGION` defaults to `ca-central-1` in the scripts.

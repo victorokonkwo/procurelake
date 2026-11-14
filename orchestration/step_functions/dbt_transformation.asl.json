@@ -1,7 +1,22 @@
 {
-  "Comment": "Run dbt build in the dbt runner container on ECS Fargate (ADR 0029), then the tenant access check (ADR 0030). Input: {\"run_id\": \"...\"}. Fails unless the container exits 0 and every tenant still sees exactly its own rows.",
-  "StartAt": "RunDbt",
+  "Comment": "Run dbt build in the dbt runner container on ECS Fargate (ADR 0029), then the tenant access check (ADR 0030). Input (all optional): {\"run_id\": \"...\", \"changed_silver\": \"<JSON array of queue entries>\"}. run_id defaults to the execution name; without changed_silver, or with \"all\" (the daily schedule, runs by hand), the whole project is built, with it only the nodes downstream of those Silver tables (ADR 0050). Fails unless the container exits 0 and every tenant still sees exactly its own rows.",
+  "StartAt": "ApplyDefaults",
   "States": {
+    "ApplyDefaults": {
+      "Type": "Pass",
+      "Parameters": {
+        "defaults": { "run_id.$": "$$.Execution.Name", "changed_silver": "all" },
+        "input.$": "$"
+      },
+      "Next": "MergeInput"
+    },
+    "MergeInput": {
+      "Comment": "Shallow merge: values given in the input override the defaults.",
+      "Type": "Pass",
+      "Parameters": { "merged.$": "States.JsonMerge($.defaults, $.input, false)" },
+      "OutputPath": "$.merged",
+      "Next": "RunDbt"
+    },
     "RunDbt": {
       "Type": "Task",
       "Resource": "arn:aws:states:::ecs:runTask.sync",
@@ -21,7 +36,8 @@
             {
               "Name": "dbt",
               "Environment": [
-                { "Name": "PROCURELAKE_RUN_ID", "Value.$": "$.run_id" }
+                { "Name": "PROCURELAKE_RUN_ID", "Value.$": "$.run_id" },
+                { "Name": "PROCURELAKE_DBT_CHANGED_SILVER", "Value.$": "$.changed_silver" }
               ]
             }
           ]

@@ -1,8 +1,13 @@
 # Runbook: CDC stalled (DMS task stopped or not capturing)
 
 **Alerts:**
-- `procurelake-dev-cdc-dms-source-latency` (CloudWatch alarm on `AWS/DMS` `CDCLatencySource`).
-- "ProcureLake dev CDC: DMS task event …" (EventBridge, replication task state change).
+- "ALARM ProcureLake dev CDC: the DMS replication task stopped or failed …" (EventBridge rule
+  `procurelake-dev-cdc-dms-task-stopped`, ADR 0050). The alarm for a silent stop.
+- `procurelake-dev-cdc-dms-source-latency` (CloudWatch alarm on `AWS/DMS` `CDCLatencySource`):
+  a **running** task that lags over 5 minutes. Missing data is not an alarm since ADR 0050, so a
+  stopped task shows INSUFFICIENT_DATA here, not ALARM.
+- "ProcureLake dev CDC: DMS task event …" (EventBridge, every replication task state change;
+  informational, and the fallback if the stopped rule does not match).
 
 **Why it matters:** the failure is silent to the pipeline. `cdc_processing` keeps succeeding
 every 5 minutes with nothing to apply, while Silver and Gold go stale and the freshness SLO
@@ -43,15 +48,17 @@ rising while "CDC: events applied" is flat.
 
 ## 3. Verify
 
-- The task is `running` and `CDCLatencySource` is back under 5 minutes; the alarm returns to OK
-  and sends an OK notification.
+- The task is `running` and `CDCLatencySource` is back under 5 minutes; the latency alarm
+  returns to OK (from INSUFFICIENT_DATA) and sends an OK notification.
 - `cdc_processing` executions succeed, and their CDC apply logs show `files>0` for the stalled
   tables.
 - Changes committed during the stall are in Silver and Gold. `make cdc-freshness` measures new
   changes; for the stall window, check the keys with `procurelake.cdc.verify.check_layers` (as
   `make cdc-stall-drill` does).
 - `procurelake-dev-cdc-source-to-silver-latency` may fire once for the backlog batch: that batch
-  really did miss the 15-minute target. Record it in the incident report.
+  really did miss the 15-minute target. Record it in the incident report. It returns to OK by
+  itself about 15 minutes later whether or not a newer batch arrived: its OK is not evidence of
+  recovery (ADR 0050).
 
 ## 4. Report
 

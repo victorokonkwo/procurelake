@@ -150,7 +150,8 @@ tick did nothing (the overlap guard, ADR 0029).
 - **Not shown:** sustained throughput above about 6,000 changes per batch, or DMS behaviour on
   a larger instance.
 
-**Follow-up (open question 40, not applied):** the 15-minute gate is not guaranteed under the
+**Follow-up (open question 40; the owner chose the first option on 2026-11-14, built in
+ADR 0050, not yet measured live):** the 15-minute gate is not guaranteed under the
 current schedule at any volume. Options:
 - shorten the dbt step, for example by building only the models downstream of the tables that
   changed;

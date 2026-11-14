@@ -271,10 +271,12 @@ locals {
         ]
       },
       {
-        # TransactWriteItems is authorized per item as PutItem / ConditionCheckItem.
+        # TransactWriteItems is authorized per item as PutItem / UpdateItem / ConditionCheckItem.
+        # UpdateItem queues the table for the CDC Gold build in the checkpoint's transaction
+        # (ADR 0050).
         Sid      = "UseCheckpointTable"
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:ConditionCheckItem"]
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:ConditionCheckItem"]
         Resource = aws_dynamodb_table.cdc_checkpoints.arn
       },
       {
@@ -505,7 +507,8 @@ resource "aws_sfn_state_machine" "dbt_transformation" {
   depends_on = [aws_iam_role_policy.dbt_transformation]
 }
 
-# cdc_processing: skip if another execution runs, CDC apply (Glue), then dbt_transformation.
+# cdc_processing: skip if another execution runs, CDC apply (Glue), then dbt_transformation
+# for the queued Silver tables only (ADR 0050); nothing queued, no dbt.
 resource "aws_iam_role" "cdc_processing" {
   name               = local.cdc_machine
   assume_role_policy = local.sfn_trust
@@ -525,6 +528,15 @@ resource "aws_iam_role_policy" "cdc_processing" {
         Effect   = "Allow"
         Action   = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"]
         Resource = "arn:aws:glue:${var.region}:${var.aws_account_id}:job/${module.apply_cdc.job_name}"
+      },
+      {
+        # The Gold build queue item only (ADR 0050): read it, and remove the entries built.
+        # The data key's Decrypt (EncryptAlert, below) also covers DynamoDB's use of it.
+        Sid       = "GoldBuildQueue"
+        Effect    = "Allow"
+        Action    = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+        Resource  = aws_dynamodb_table.cdc_checkpoints.arn
+        Condition = { "ForAllValues:StringEquals" = { "dynamodb:LeadingKeys" = ["gold#cdc"] } }
       },
       { Sid = "StartDbt", Effect = "Allow", Action = "states:StartExecution", Resource = aws_sfn_state_machine.dbt_transformation[0].arn },
       {
@@ -552,10 +564,62 @@ resource "aws_sfn_state_machine" "cdc_processing" {
   role_arn = aws_iam_role.cdc_processing.arn
   definition = templatefile("${path.module}/../../../../orchestration/step_functions/cdc_processing.asl.json", {
     apply_cdc_job_name    = module.apply_cdc.job_name
+    checkpoint_table_name = aws_dynamodb_table.cdc_checkpoints.name
     dbt_state_machine_arn = aws_sfn_state_machine.dbt_transformation[0].arn
     alerts_topic_arn      = aws_sns_topic.pipeline_alerts.arn
   })
   depends_on = [aws_iam_role_policy.cdc_processing]
+}
+
+# Daily full dbt build (ADR 0050). CDC runs build only what is downstream of changed Silver
+# tables, and only while dev/cdc is up; this run rebuilds the whole project once a day, CDC
+# up or not (reference and AI marts included). A failure alerts through the dbt-transformation
+# state machine alarm (dev/observability).
+resource "aws_iam_role" "dbt_scheduler" {
+  count = local.orchestrated && var.schedule_dbt_full_build != "" ? 1 : 0
+
+  name = "${local.dbt_machine}-scheduler"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "scheduler.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "dbt_scheduler" {
+  count = length(aws_iam_role.dbt_scheduler)
+
+  name = "start-dbt-full-build"
+  role = aws_iam_role.dbt_scheduler[0].id
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [{ Effect = "Allow", Action = "states:StartExecution", Resource = aws_sfn_state_machine.dbt_transformation[0].arn }]
+  })
+}
+
+resource "aws_scheduler_schedule" "dbt_full_build" {
+  count = length(aws_iam_role.dbt_scheduler)
+
+  name                         = "${local.name_prefix}-dbt-full-build"
+  description                  = "Daily full dbt build of Gold (ADR 0050); CDC runs build only what changed."
+  schedule_expression          = var.schedule_dbt_full_build
+  schedule_expression_timezone = "America/Toronto"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_sfn_state_machine.dbt_transformation[0].arn
+    role_arn = aws_iam_role.dbt_scheduler[0].arn
+    input    = jsonencode({ changed_silver = "all" })
+  }
+
+  depends_on = [aws_iam_role_policy.dbt_scheduler]
 }
 
 # ----------------------------------------------------------------------------- AI contract extraction

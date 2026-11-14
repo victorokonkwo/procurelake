@@ -1,6 +1,8 @@
 # Secrets and local environment
 .env
 *.pem
+# The public AWS RDS CA bundle for ca-central-1, pinned by SHA-256 (ADR 0050). Not a secret.
+!configs/tls/rds-ca-central-1-bundle.pem
 *.key
 
 # Python

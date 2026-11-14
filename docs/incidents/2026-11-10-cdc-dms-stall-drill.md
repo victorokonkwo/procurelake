@@ -90,9 +90,9 @@ Correctness was checked per key in Silver and Gold, and for duplicates in Silver
 ## Actions
 | Action | Owner | Status |
 |---|---|---|
-| Measure the latency alarm's missing-data behaviour, or alarm also on the EventBridge "task stopped" event (it was the fastest signal) | data platform | Open (open question 39) |
-| Avoid the creation-time alarm: suppress it until the task has published metrics, or accept and document it | data platform | Open (open question 39) |
-| Decide whether the freshness alarm's OK should require an on-time batch (today it clears by itself about 15 minutes after a late one) | data platform | Open (open question 39) |
+| Measure the latency alarm's missing-data behaviour, or alarm also on the EventBridge "task stopped" event (it was the fastest signal) | data platform | Decided 2026-11-14: a "task stopped or failed" rule (ADR 0050). Built, not yet verified live |
+| Avoid the creation-time alarm: suppress it until the task has published metrics, or accept and document it | data platform | Decided 2026-11-14: missing data is `missing`, a stop relies on the rule above (ADR 0050). Built, not yet verified live |
+| Decide whether the freshness alarm's OK should require an on-time batch (today it clears by itself about 15 minutes after a late one) | data platform | Decided 2026-11-14: documented in the alarm and the runbook as "time passed" (ADR 0050) |
 | Repeat the drill with a larger stall (minutes of backlog at higher volume) | data platform | Open |
 
 ## Evidence
