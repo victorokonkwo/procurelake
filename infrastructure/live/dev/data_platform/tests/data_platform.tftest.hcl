@@ -317,8 +317,8 @@ run "no_batch_or_quality_machines_before_the_task_runner_image_exists" {
   }
 
   assert {
-    condition     = length(aws_sfn_state_machine.batch_ingestion) == 0 && length(aws_sfn_state_machine.data_quality) == 0 && length(aws_scheduler_schedule.batch) == 0
-    error_message = "Batch ingestion and data quality need the task runner image (ADR 0040)."
+    condition     = length(aws_sfn_state_machine.batch_ingestion) == 0 && length(aws_sfn_state_machine.data_quality) == 0 && length(aws_scheduler_schedule.batch) == 0 && length(aws_sfn_state_machine.document_intelligence) == 0 && length(aws_cloudwatch_event_rule.document_landed) == 0
+    error_message = "Batch ingestion, data quality and document intelligence need the task runner image (ADR 0040, 0045)."
   }
 }
 
@@ -400,5 +400,61 @@ run "an_empty_schedule_disables_it" {
   assert {
     condition     = !contains(keys(aws_scheduler_schedule.batch), "canada-contracts") && length(aws_sfn_state_machine.batch_ingestion) == 1
     error_message = "An empty schedule turns that schedule off without removing the machine."
+  }
+}
+
+run "document_intelligence_extracts_as_the_ai_role_when_a_document_lands" {
+  command = apply
+
+  variables {
+    dbt_image_digest         = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    task_runner_image_digest = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+  }
+
+  assert {
+    condition     = jsondecode(aws_sfn_state_machine.document_intelligence[0].definition).States.Extract.Parameters.Overrides.TaskRoleArn == aws_iam_role.ai_extraction.arn
+    error_message = "Extraction must run as the AI extraction role (ADR 0045)."
+  }
+  assert {
+    condition     = jsondecode(aws_cloudwatch_event_rule.document_landed[0].event_pattern).detail.bucket.name == ["procurelake-dev-artifacts-123456789012-ca-central-1"] && jsondecode(aws_cloudwatch_event_rule.document_landed[0].event_pattern).detail.object.key[0].prefix == "pipeline_manifests/public_contracts/contract_documents/"
+    error_message = "The trigger is a document landing manifest in the artifacts bucket, nothing else."
+  }
+  assert {
+    condition     = aws_cloudwatch_event_target.document_landed[0].arn == aws_sfn_state_machine.document_intelligence[0].arn
+    error_message = "The landing rule starts the document intelligence machine."
+  }
+  assert {
+    condition = alltrue([for s in jsondecode(aws_iam_role_policy.document_intelligence.policy).Statement :
+    s.Action != "iam:PassRole" || (s.Condition.StringEquals["iam:PassedToService"] == "ecs-tasks.amazonaws.com" && length(s.Resource) == 2 && contains(s.Resource, aws_iam_role.ai_extraction.arn) && !contains(s.Resource, "arn:aws:iam::123456789012:role/procurelake-dev-data-engineer"))])
+    error_message = "The machine may pass only the runner's execution role and the AI extraction role, to ECS tasks."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_iam_role.ai_extraction.assume_role_policy).Statement :
+    s.Principal == { Service = "ecs-tasks.amazonaws.com" } && s.Condition.StringEquals["aws:SourceAccount"] == "123456789012"])
+    error_message = "ECS tasks of this account (only) may take the AI extraction role."
+  }
+  assert {
+    condition = anytrue([for s in jsondecode(aws_iam_role_policy.ai_extraction.policy).Statement :
+    s.Sid == "ReviewQueue" && contains(s.Action, "dynamodb:Query")])
+    error_message = "The duplicate check queries the review table."
+  }
+  assert {
+    condition     = contains([for e in jsondecode(module.task_runner.container_definitions_for_test)[0].environment : e.name], "PROCURELAKE_AI_REVIEW_TABLE")
+    error_message = "The task runner knows the review table."
+  }
+}
+
+run "document_intelligence_trigger_can_be_turned_off" {
+  command = apply
+
+  variables {
+    dbt_image_digest                 = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    task_runner_image_digest         = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    document_intelligence_on_landing = false
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_event_rule.document_landed) == 0 && length(aws_sfn_state_machine.document_intelligence) == 1
+    error_message = "Turning the trigger off keeps the machine for runs by hand."
   }
 }

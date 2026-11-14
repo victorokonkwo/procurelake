@@ -124,7 +124,11 @@ The owner decided on 2026-11-11:
   created the model agreement (`agreementAvailability: AVAILABLE`). Invocations still returned
   `AccessDeniedException: anthropic.claude-haiku-5-5 is not available for this account` through
   both the Canada and global profiles, while Amazon Nova Lite answered through its Canada
-  profile. Until access is granted, `make ai-extract` cannot run. The completion gate is not
+  profile. Until access is granted, `make ai-extract` cannot run. **Cause found 2026-11-14:** the
+  model is `AUTHORIZED` for the account, but its applied token quota is 0 through both profiles
+  (Service Quotas `L-47520EB7` and `L-F26CA8D1`; the AWS default is 10,000,000). Service Quotas
+  refuses a request below the default, so the 0 has to be raised through an AWS Support case
+  (ADR 0045, Consequences). The completion gate is not
   met, and no extraction accuracy, latency or cost has been measured. Everything else runs: 56
   unit tests use test doubles for Textract, Bedrock and DynamoDB, and Textract was exercised
   live.

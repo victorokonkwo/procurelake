@@ -582,13 +582,24 @@ resource "aws_iam_role" "ai_extraction" {
   description = "Contract extraction: Textract, Bedrock (Canada profile), review queue, silver_contract_intelligence."
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid       = "AllowOperators"
-      Effect    = "Allow"
-      Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
-      Action    = "sts:AssumeRole"
-      Condition = { ArnEquals = { "aws:PrincipalArn" = var.operator_arns } } # ADR 0037
-    }]
+    Statement = [
+      {
+        Sid       = "AllowOperators"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
+        Action    = "sts:AssumeRole"
+        Condition = { ArnEquals = { "aws:PrincipalArn" = var.operator_arns } } # ADR 0037
+      },
+      {
+        # The document intelligence machine runs extraction in the task runner with this role
+        # as the task role (ADR 0045), as the data-quality machine does with the data engineer.
+        Sid       = "AllowEcsTasks"
+        Effect    = "Allow"
+        Principal = { Service = "ecs-tasks.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+        Condition = { StringEquals = { "aws:SourceAccount" = var.aws_account_id } }
+      },
+    ]
   })
   max_session_duration = 3600
 }
@@ -675,9 +686,10 @@ resource "aws_iam_role_policy" "ai_extraction" {
         ]
       },
       {
-        Sid      = "ReviewQueue"
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"]
+        Sid    = "ReviewQueue"
+        Effect = "Allow"
+        # Query: the document's earlier extractions, to skip a repeated landing event (ADR 0045).
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan", "dynamodb:Query"]
         Resource = aws_dynamodb_table.ai_review.arn
       },
       {

@@ -27,6 +27,8 @@ locals {
     for k, v in {
       batch-ingestion = try(local.dp.batch_ingestion_state_machine_arn, null)
       data-quality    = try(local.dp.data_quality_state_machine_arn, null)
+      # ADR 0045: same condition as the two above.
+      document-intelligence = try(local.dp.document_intelligence_state_machine_arn, null)
     } : k => v if v != null
   })
   cdc_namespace = "ProcureLake/CDC"

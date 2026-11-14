@@ -166,3 +166,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
 
   depends_on = [aws_s3_bucket_versioning.this]
 }
+
+# Object events to Amazon EventBridge for the buckets listed in eventbridge_buckets. This is the
+# bucket's only notification configuration (S3 holds one per bucket); EventBridge rules decide
+# who reacts, so further consumers need no change here.
+resource "aws_s3_bucket_notification" "eventbridge" {
+  for_each = var.eventbridge_buckets
+
+  bucket      = aws_s3_bucket.this[each.key].id
+  eventbridge = true
+}

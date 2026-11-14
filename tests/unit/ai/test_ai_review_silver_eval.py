@@ -205,3 +205,50 @@ def test_evaluate_scores_latest_extraction(review_table):
 def test_labels_must_cover_every_field():
     with pytest.raises(ValueError, match="missing"):
         DocumentLabels(document_type="award", fields={"supplier": LabelField(value=None)})
+
+
+def test_existing_extraction_matches_only_the_same_pdf_prompt_and_schema(review_table):
+    # A repeated landing event (S3 to EventBridge is at least once) must not pay for a second
+    # extraction of the same input; a new PDF, prompt or schema must (ADR 0045).
+    sha = "ab" * 32
+    assert (
+        review.existing_extraction(
+            review_table, "doc-1", sha, "contract_extraction_v1", "contract_extraction.v1"
+        )
+        is None
+    )
+    review.enqueue(review_table, _record())
+    found = review.existing_extraction(
+        review_table, "doc-1", sha, "contract_extraction_v1", "contract_extraction.v1"
+    )
+    assert found == "20261111T110000Z-abcd1234"
+    assert (
+        review.existing_extraction(
+            review_table, "doc-1", "cd" * 32, "contract_extraction_v1", "contract_extraction.v1"
+        )
+        is None
+    )
+    assert (
+        review.existing_extraction(
+            review_table, "doc-1", sha, "contract_extraction_v2", "contract_extraction.v1"
+        )
+        is None
+    )
+    assert (
+        review.existing_extraction(
+            review_table, "doc-1", sha, "contract_extraction_v1", "contract_extraction.v2"
+        )
+        is None
+    )
+    assert (
+        review.existing_extraction(
+            review_table, "doc-2", sha, "contract_extraction_v1", "contract_extraction.v1"
+        )
+        is None
+    )
+    # A decided extraction still counts: its input was already sent to the model.
+    item = review.get(review_table, "doc-1", "20261111T110000Z-abcd1234")
+    review.decide(review_table, item, "Reviewer", "arn:aws:sts::1:assumed-role/r/s", "rejected")
+    assert review.existing_extraction(
+        review_table, "doc-1", sha, "contract_extraction_v1", "contract_extraction.v1"
+    )

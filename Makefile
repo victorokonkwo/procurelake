@@ -156,6 +156,13 @@ batch-ingestion-run: ## Start batch ingestion once and wait: TASK=ingest-usaspen
 	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw batch_ingestion_state_machine_arn) \
 	  --input '{"task": "$(TASK)"}'
 
+.PHONY: document-intelligence-run
+document-intelligence-run: ## Extract one landed document through the state machine and wait: DOC=<document id> (Bedrock, billed; ADR 0045)
+	@echo "$(DOC)" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$$' || { echo "Usage: make document-intelligence-run DOC=<document id>"; exit 1; }
+	uv run python scripts/aws/run_state_machine.py \
+	  $$(terraform -chdir=infrastructure/live/dev/data_platform output -raw document_intelligence_state_machine_arn) \
+	  --input '{"document_id": "$(DOC)"}'
+
 .PHONY: data-quality-run
 data-quality-run: ## Run the daily data-quality checks once and wait (dbt test + Silver reconciliation; ADR 0040)
 	uv run python scripts/aws/run_state_machine.py \

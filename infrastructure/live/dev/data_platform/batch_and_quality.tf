@@ -45,6 +45,8 @@ module "task_runner" {
     PROCURELAKE_USASPENDING_MAX_DAYS = tostring(var.usaspending_max_days)
     # Weekly re-sweep (ADR 0044).
     PROCURELAKE_USASPENDING_RESWEEP_DAYS = tostring(var.usaspending_resweep_days)
+    # Contract extraction (ADR 0045), run as the AI extraction role.
+    PROCURELAKE_AI_REVIEW_TABLE = aws_dynamodb_table.ai_review.name
   }
 }
 
