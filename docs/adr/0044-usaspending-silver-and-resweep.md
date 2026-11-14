@@ -97,7 +97,7 @@ Facts the design rests on:
    - The step retries three times, 5 minutes apart and doubling, because the likely error is
      another run in progress. Then it alerts.
    - The daily maintenance compacts the table and syncs its catalog metadata (ADR 0033, 0042).
-9. **No Gold yet.** Whether public data joins tenant products is open question 12. dbt only tests
+9. **No Gold yet.** Public data is never joined into tenant products; it is admin-only (ADR 0047, open question 12). dbt only tests
    the Silver table as a source: unique and not-null key, not-null `last_modified_at`, currency
    USD.
 

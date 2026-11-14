@@ -54,7 +54,7 @@ the late-arrival policy and materialization (8), delete semantics (9), and where
    - Actual spend is `paid_amount > 0` by month of `paid_at`. The source stores the cumulative
      amount paid and the latest payment time, not each payment.
    - Cycle time runs from `published_at` to `awarded_at`.
-   - `dim_supplier` is one row per supplier registration (no cross-tenant matching; open question 35).
+   - `dim_supplier` is one row per supplier registration (no cross-tenant matching, by owner decision: ADR 0047).
 9. **Catalog and IAM:**
    - Terraform creates the Glue databases `procurelake_<env>_gold` (at `s3://<lake>/gold/`) and
      `procurelake_<env>_gold_staging`.
