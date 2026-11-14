@@ -235,3 +235,102 @@ def test_reference_table_gets_its_contract_metadata_and_is_synced_by_maintenance
     assert [(r.table, r.status) for r in results] == [
         (f"{DB}.silver_usaspending_contract_awards", "unchanged")
     ]
+
+
+GOLD = "procurelake_dev_gold"
+DBT_META = {
+    "grain": "one row per tenant",
+    "owner": "analytics",
+    "freshness": "24h",
+    "data_classification": "synthetic",
+}
+
+
+def gold_table(version: str, params: dict, description: str = "Awarded value by tenant") -> dict:
+    t = iceberg_table("mart_awarded_value", version=version, Description=description)
+    t["DatabaseName"] = GOLD
+    t["Parameters"].update(params)
+    return t
+
+
+def test_maintenance_restores_the_gold_parameters_an_athena_commit_dropped(glue):
+    # Dev, 2026-11-14: after OPTIMIZE/VACUUM through Athena, a Gold mart kept only Iceberg's
+    # parameters; dbt's owner, grain, freshness and classification were gone.
+    from procurelake.governance.catalog import restore_metadata, save_metadata
+
+    client, stub = glue
+    key = {"DatabaseName": GOLD, "Name": "mart_awarded_value"}
+    stub.add_response("get_table", {"Table": gold_table("7", DBT_META)}, key)
+    saved = save_metadata(client, GOLD, ["mart_awarded_value"])
+    assert saved["mart_awarded_value"].parameters == DBT_META  # Iceberg's own keys are not saved
+
+    after = gold_table("9", {})  # what maintenance left: a new snapshot, dbt's keys dropped
+    after["Parameters"]["metadata_location"] = "s3://lake/gold/mart_awarded_value/metadata/0009.metadata.json"
+    stub.add_response("get_table", {"Table": after}, key)
+    stub.add_response(
+        "update_table",
+        {},
+        {"DatabaseName": GOLD, "TableInput": ANY, "VersionId": "9", "SkipArchive": True},
+    )
+    sent = []
+    client.meta.events.register(
+        "before-parameter-build.glue.UpdateTable", lambda params, **_: sent.append(copy.deepcopy(params))
+    )
+    (result,) = restore_metadata(client, GOLD, saved)
+    assert result.status == "updated" and set(result.changed) == set(DBT_META)
+    params = sent[0]["TableInput"]["Parameters"]
+    assert params["metadata_location"].endswith("0009.metadata.json")  # the new snapshot is kept
+    assert {k: params[k] for k in DBT_META} == DBT_META
+    assert sent[0]["TableInput"]["Description"] == "Awarded value by tenant"
+
+
+def test_restore_never_overwrites_a_value_set_after_the_save(glue):
+    # A dbt run during maintenance wrote a new grain: restore fills gaps, it does not roll back.
+    from procurelake.governance.catalog import TableMetadata, restore_metadata
+
+    client, stub = glue
+    key = {"DatabaseName": GOLD, "Name": "mart_awarded_value"}
+    now = gold_table("9", {**DBT_META, "grain": "one row per tenant and agency"})
+    stub.add_response("get_table", {"Table": now}, key)
+    saved = {"mart_awarded_value": TableMetadata("Awarded value by tenant", DBT_META)}
+    (result,) = restore_metadata(client, GOLD, saved)
+    assert result.status == "unchanged"  # no update_table call is stubbed: none was sent
+
+
+def test_save_skips_a_missing_table_and_restore_reports_it(glue):
+    from procurelake.governance.catalog import TableMetadata, restore_metadata, save_metadata
+
+    client, stub = glue
+    stub.add_client_error("get_table", service_error_code="EntityNotFoundException")
+    assert save_metadata(client, GOLD, ["mart_awarded_value"]) == {}
+    stub.add_client_error("get_table", service_error_code="EntityNotFoundException")
+    (result,) = restore_metadata(client, GOLD, {"mart_awarded_value": TableMetadata("d", DBT_META)})
+    assert result.status == "missing"
+
+
+def test_maintenance_job_saves_before_and_restores_after_every_maintained_table(glue):
+    from procurelake.lakehouse.maintenance_job import restore_step, save_step, targets
+
+    client, stub = glue
+    args = parse_args([
+        "--workgroup", "wg", "--silver-database", DB, "--gold-database", GOLD, "--report-bucket", "b",
+        "--checkpoint-table", "c", "--silver-tables", "silver_awards", "--gold-tables", "mart_awarded_value",
+        "--silver-max-age-seconds", "3600", "--silver-min-snapshots", "1",
+        "--gold-max-age-seconds", "3600", "--gold-min-snapshots", "1",
+    ])  # fmt: skip
+    silver = iceberg_table("silver_awards")
+    stub.add_response("get_table", {"Table": silver}, {"DatabaseName": DB, "Name": "silver_awards"})
+    gold_key = {"DatabaseName": GOLD, "Name": "mart_awarded_value"}
+    stub.add_response("get_table", {"Table": gold_table("7", DBT_META)}, gold_key)
+    saved = save_step(client, targets(args))
+    assert set(saved) == {DB, GOLD}
+    stub.add_response("get_table", {"Table": silver}, {"DatabaseName": DB, "Name": "silver_awards"})
+    stub.add_response("get_table", {"Table": gold_table("8", {})}, gold_key)
+    stub.add_response(
+        "update_table", {}, {"DatabaseName": GOLD, "TableInput": ANY, "VersionId": "8", "SkipArchive": True}
+    )
+    results = restore_step(client, saved)
+    assert [(r.table, r.status) for r in results] == [
+        (f"{DB}.silver_awards", "unchanged"),
+        (f"{GOLD}.mart_awarded_value", "updated"),
+    ]

@@ -40,8 +40,12 @@ from procurelake.contracts.source import load_contracts
 from procurelake.ingestion.connectors import canada_contracts
 from procurelake.ingestion.connectors.csv_snapshot import CsvSnapshotConnector, CsvSource
 from procurelake.ingestion.connectors.postgres_snapshot import PostgresSnapshotConnector
-from procurelake.ingestion.connectors.usaspending import UsaspendingConnector, plan_incremental, resweep_days
-from procurelake.ingestion.http import HttpClient
+from procurelake.ingestion.connectors.usaspending import (
+    UsaspendingConnector,
+    plan_incremental,
+    resweep_days,
+    usaspending_http_client,
+)
 from procurelake.ingestion.landing import LandingStore, LocalLandingStore, S3LandingStore
 
 DEFAULT_CONTRACTS_DIR = Path(__file__).resolve().parents[3] / "contracts" / "source"
@@ -188,7 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         return _run_postgres_snapshot(args, raw_store, manifest_store)
     if args.source in {"canada-contracts", "csv"}:
         return _run_csv(args, raw_store, manifest_store)
-    connector = UsaspendingConnector(HttpClient(), raw_store, manifest_store)
+    connector = UsaspendingConnector(usaspending_http_client(), raw_store, manifest_store)
 
     last_settled_day = datetime.now(UTC).date() - timedelta(days=connector.config.settle_days)
     purpose = "resweep" if args.resweep_days else "daily"

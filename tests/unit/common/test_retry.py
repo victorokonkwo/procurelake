@@ -25,8 +25,22 @@ def test_retry_after_wins_when_larger_but_is_capped():
 
 @pytest.mark.parametrize(
     "kwargs",
-    [{"max_attempts": 0}, {"base_delay_seconds": 0}, {"base_delay_seconds": 5, "max_delay_seconds": 1}],
+    [
+        {"max_attempts": 0},
+        {"base_delay_seconds": 0},
+        {"base_delay_seconds": 5, "max_delay_seconds": 1},
+        {"min_delay_seconds": -1},
+        {"min_delay_seconds": 61},
+    ],
 )
 def test_invalid_policies_rejected(kwargs):
     with pytest.raises(ValueError):
         RetryPolicy(**kwargs)
+
+
+def test_min_delay_is_a_floor_under_the_jitter():
+    policy = RetryPolicy(base_delay_seconds=1, max_delay_seconds=600, min_delay_seconds=30)
+    rng = random.Random(0)
+    for attempt in range(1, 8):
+        for _ in range(100):
+            assert 30 <= policy.delay_before_retry(attempt, rng=rng) <= max(30, min(600, 2 ** (attempt - 1)))

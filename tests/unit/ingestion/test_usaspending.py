@@ -213,3 +213,40 @@ def test_purpose_is_recorded_and_a_resweep_lands_a_new_batch_for_a_collected_day
     assert (daily.request["purpose"], resweep.request["purpose"]) == ("daily", "resweep")
     assert daily.batch_id != resweep.batch_id and resweep.status == "succeeded"
     assert len(load_manifests(stores[1], "usaspending", "spending_by_award")) == 2
+
+
+def test_live_client_stays_under_and_outlasts_the_api_block():
+    # Observed 2026-11-13/14: ~250 requests in a burst, then every connection is closed for ~5 min.
+    from procurelake.ingestion.connectors.usaspending import (
+        REQUEST_INTERVAL_SECONDS,
+        RETRY_POLICY,
+        usaspending_http_client,
+    )
+
+    assert 300 / REQUEST_INTERVAL_SECONDS <= 240  # requests per 5 minutes, below ~250
+    shortest_total_wait = RETRY_POLICY.min_delay_seconds * (RETRY_POLICY.max_attempts - 1)
+    assert shortest_total_wait > 300  # even the luckiest jitter waits out a 5-minute block
+    client = usaspending_http_client()
+    assert client.retry_policy == RETRY_POLICY
+    assert client.min_interval_seconds == REQUEST_INTERVAL_SECONDS
+
+
+def test_a_temporary_block_is_ridden_out_and_the_day_still_reconciles(httpserver, stores):
+    # The API refusing requests mid-day (here 4 page requests in a row) must not fail the batch.
+    fake = FakeUsaspending(record_count=450, fail_first_n_page_requests=4)
+    fake.install(httpserver)
+    raw, manifests = stores
+    sleeps: list[float] = []
+    http = HttpClient(
+        retry_policy=RetryPolicy(
+            max_attempts=8, base_delay_seconds=60, max_delay_seconds=300, min_delay_seconds=60
+        ),
+        sleep=sleeps.append,
+    )
+    connector = UsaspendingConnector(
+        http, raw, manifests, UsaspendingConfig(base_url=httpserver.url_for("")), clock=lambda: NOW
+    )
+    manifest = connector.ingest_day(DAY)
+    assert manifest.status == "succeeded", manifest.reconciliation
+    assert manifest.reconciliation.landed_record_count == 450
+    assert len(sleeps) == 4 and min(sleeps) >= 60

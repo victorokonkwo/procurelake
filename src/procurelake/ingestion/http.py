@@ -1,7 +1,8 @@
 """HTTP client with retries for public source APIs.
 
 Retries connection errors, timeouts, HTTP 429, and HTTP 5xx with exponential backoff and full
-jitter (``RetryPolicy``), honouring ``Retry-After`` when present. Other 4xx responses are
+jitter (``RetryPolicy``), honouring ``Retry-After`` when present. ``min_interval_seconds`` paces
+requests: each one starts at least that long after the previous one started. Other 4xx responses are
 permanent and raise immediately. Response bodies are returned as raw bytes so they can be
 landed in Bronze exactly as received.
 """
@@ -74,12 +75,27 @@ class HttpClient:
         retry_policy: RetryPolicy | None = None,
         timeout_seconds: float = 60.0,
         sleep: Callable[[float], None] = time.sleep,
+        min_interval_seconds: float = 0.0,
+        monotonic: Callable[[], float] = time.monotonic,
     ):
+        if min_interval_seconds < 0:
+            raise ValueError("min_interval_seconds must be >= 0")
         self.session = session or requests.Session()
         self.session.headers.setdefault("User-Agent", USER_AGENT)
         self.retry_policy = retry_policy or RetryPolicy()
         self.timeout_seconds = timeout_seconds
         self._sleep = sleep
+        self.min_interval_seconds = min_interval_seconds
+        self._monotonic = monotonic
+        self._last_start: float | None = None
+
+    def _pace(self) -> None:
+        """Wait until ``min_interval_seconds`` has passed since the previous request started."""
+        if self.min_interval_seconds and self._last_start is not None:
+            wait = self._last_start + self.min_interval_seconds - self._monotonic()
+            if wait > 0:
+                self._sleep(wait)
+        self._last_start = self._monotonic()
 
     def post_json(self, url: str, payload: dict) -> HttpResponse:
         return self._request("POST", url, json_body=payload)
@@ -100,6 +116,7 @@ class HttpClient:
         last_error = ""
         for attempt in range(1, policy.max_attempts + 1):
             retry_after: float | None = None
+            self._pace()
             try:
                 with self.session.get(url, stream=True, timeout=self.timeout_seconds) as response:
                     if response.status_code >= 400 and response.status_code not in RETRYABLE_STATUS:
@@ -150,6 +167,7 @@ class HttpClient:
         last_error: str = ""
         for attempt in range(1, policy.max_attempts + 1):
             retry_after: float | None = None
+            self._pace()
             try:
                 response = self.session.request(
                     method, url, json=json_body, timeout=self.timeout_seconds, allow_redirects=True

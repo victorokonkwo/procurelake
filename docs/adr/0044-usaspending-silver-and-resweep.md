@@ -32,14 +32,25 @@ Facts the design rests on:
 - **An award changes by reappearing.** When it is modified, it shows up again in the batch for
   its new modification date. So the same `generated_internal_id` can sit in many batches.
 - **The API reports no deletes.** It publishes current records only.
-- **Field formats come from a real response** (the 2026-10-30 window, 24,800 records, read
-  2026-11-13):
+- **Field formats come from a real response** (the first 24,800 of the 75,201 records of the
+  2026-10-30 window, read 2026-11-13; the API blocked the rest, see below):
   - `Last Modified Date` is `YYYY-MM-DD HH:MM:SS` with no time zone;
   - NAICS and PSC are `{code, description}` objects;
   - amounts are JSON numbers, none with more than 2 decimals in that sample.
 - **Day sizes vary a lot.** 2026-10-23 had 5,542 records; 2026-10-30 had 75,201 (about 750 pages
-  of about 100 KB). The public API dropped the connection on the large day locally; the batch was
-  recorded as failed, as designed.
+  of about 100 KB).
+- **The API blocks fast clients** (found on the first dev runs, 2026-11-13/14). An earlier draft of
+  this ADR read the failures as the API dropping connections on large days. What happens instead:
+  - after about 250 requests at 2 to 4 per second, the API closes every connection without a
+    response, for about 5 minutes (measured: refused at 02:17 to 02:20 UTC, served at 02:21);
+  - every large day therefore stopped at exactly 24,800 records (248 pages), from Fargate and
+    from a workstation alike, and the next days in the same run failed too;
+  - page 249 on its own was served normally, so there is no paging cap;
+  - no rate-limit header is sent.
+
+  The connector now spaces requests 1.25 s apart (240 per 5 minutes) and, when refused, waits 1 to
+  5 minutes per retry over 8 attempts (at least 7 minutes in all), longer than a block. No batch
+  failed this way reached Silver: each was recorded as failed and never applied.
 
 ## Decision
 1. **Grain (owner): current state.** `silver_usaspending_contract_awards` has one row per
@@ -94,7 +105,8 @@ Facts the design rests on:
   20,000 pages and up to about 1 GB of new immutable Bronze per week, estimated from the two days
   above, not measured.
   - Cost is small: S3 storage and a 1 vCPU Fargate task for up to a few hours.
-  - A run can take hours, and a day that fails (API disconnects) is retried the next week.
+  - Paced at 1.25 s per request, a re-sweep takes about 40 minutes to 7 hours; a daily run of up
+    to 3 days, up to about 50 minutes. A day that still fails is collected again by the next run.
   - The first weekly summaries will show the real sizes and findings.
 - **Deploy order.** The dbt source tests fail until the table exists. After the data_platform
   apply, run `make batch-ingestion-run TASK=ingest-usaspending`, or `make reference-silver-run`,
