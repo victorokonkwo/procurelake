@@ -76,7 +76,8 @@ TF_DIRS := infrastructure/modules/kms infrastructure/modules/budgets infrastruct
            infrastructure/modules/dms_s3_cdc infrastructure/live/dev/cdc \
            infrastructure/modules/public_network infrastructure/modules/dbt_runner \
            infrastructure/live/dev/security infrastructure/live/dev/observability \
-           infrastructure/bootstrap infrastructure/live/dev/foundation infrastructure/live/dev/data_platform
+           infrastructure/bootstrap infrastructure/live/dev/foundation infrastructure/live/dev/data_platform \
+           infrastructure/live/dev/dbt_cloud
 
 .PHONY: tf-fmt
 tf-fmt: ## terraform fmt check (recursive)
@@ -308,6 +309,19 @@ cdc-plan: ## Plan dev/cdc phase 1 (network, RDS, secrets); PHASE=2 adds DMS (nee
 .PHONY: rds-ca-check
 rds-ca-check: ## Compare the committed RDS CA bundle (ca-central-1) and today's AWS download with the pinned SHA-256 (ADR 0050; no AWS credentials)
 	uv run python scripts/aws/rds_ca_check.py
+
+.PHONY: dev-dbt-cloud-plan
+dev-dbt-cloud-plan: ## Plan dev/dbt_cloud: the dbt Cloud development user, workgroup and sandbox database (ADR 0051). Owner applies it, not CI
+	terraform -chdir=infrastructure/live/dev/dbt_cloud init -input=false -backend-config=backend.hcl
+	terraform -chdir=infrastructure/live/dev/dbt_cloud plan -input=false -out=dbt_cloud.tfplan
+
+.PHONY: dbt-cloud-check
+dbt-cloud-check: ## Read-only: run the dbt Cloud user's policy through the IAM policy simulator; exits 1 on any unexpected allow or deny (ADR 0051)
+	@mkdir -p build
+	$(TFOUT) -json > build/foundation_outputs.json
+	terraform -chdir=infrastructure/live/dev/dbt_cloud output -json > build/dbt_cloud_outputs.json
+	uv run python -m procurelake.governance.cli dbt-cloud-check \
+	  --foundation-outputs build/foundation_outputs.json --dbt-cloud-outputs build/dbt_cloud_outputs.json
 
 .PHONY: cdc-source-setup
 cdc-source-setup: ## Migrate + seed the RDS source and create the DMS user (after phase 1 apply)

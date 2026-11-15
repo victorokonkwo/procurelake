@@ -12,8 +12,10 @@ infrastructure/
     ├── foundation/            # data KMS key, 4 lakehouse buckets, workload roles,
     │                          #   Bronze/Silver/Gold Glue databases, engineering Athena workgroup
     ├── data_platform/         # Glue jobs (Bronze -> Silver), reading foundation's remote state
-    └── cdc/                   # DISPOSABLE, hourly-billed: VPC, RDS PostgreSQL source, AWS DMS
-                               #   (destroy after each session: make cdc-down; ADR 0027)
+    ├── cdc/                   # DISPOSABLE, hourly-billed: VPC, RDS PostgreSQL source, AWS DMS
+    │                          #   (destroy after each session: make cdc-down; ADR 0027)
+    └── dbt_cloud/             # OWNER-APPLIED, not CI: dbt Cloud development user, workgroup and
+                               #   sandbox database (ADR 0051; docs/runbooks/dbt-cloud.md)
 ```
 
 Other module and root directories from `docs/architecture/repository_structure.md` are added when their sprint starts.
