@@ -71,10 +71,13 @@ resource "aws_iam_user" "dbt_cloud" {
   tags = { Purpose = "dbt Cloud development connection - ADR 0051" }
 }
 
-resource "aws_iam_user_policy" "dbt_cloud" {
-  # checkov:skip=CKV_AWS_40: one user with one purpose; a group would hold only this user. The policy is scoped and IP-restricted (ADR 0051)
-  name = "dbt-cloud-development"
-  user = aws_iam_user.dbt_cloud.name
+# A customer managed policy, not an inline one: a user's inline policies may total only 2,048
+# characters, and this one is longer (PutUserPolicy LimitExceeded, 2026-11-15). Managed
+# policies may be 6,144 (IAM quotas).
+resource "aws_iam_policy" "dbt_cloud" {
+  name        = "${local.name}-development"
+  path        = "/procurelake/"
+  description = "dbt Cloud development access: Silver read, sandbox build, own workgroup, dbt Cloud addresses only (ADR 0051)."
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -201,4 +204,10 @@ resource "aws_iam_user_policy" "dbt_cloud" {
       },
     ]
   })
+}
+
+resource "aws_iam_user_policy_attachment" "dbt_cloud" {
+  # checkov:skip=CKV_AWS_40: one user with one purpose; a group would hold only this user. The policy is scoped and IP-restricted (ADR 0051)
+  user       = aws_iam_user.dbt_cloud.name
+  policy_arn = aws_iam_policy.dbt_cloud.arn
 }
