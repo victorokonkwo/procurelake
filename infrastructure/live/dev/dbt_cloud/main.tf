@@ -68,7 +68,7 @@ resource "aws_iam_user" "dbt_cloud" {
   # The access key is created outside Terraform (runbook); destroy must still remove it.
   force_destroy = true
 
-  tags = { Purpose = "dbt Cloud development connection (ADR 0051)" }
+  tags = { Purpose = "dbt Cloud development connection - ADR 0051" }
 }
 
 resource "aws_iam_user_policy" "dbt_cloud" {
