@@ -1,10 +1,10 @@
 # ADR 0051: dbt Cloud as a development environment beside the production runner
 
-- **Status:** Accepted (owner decision 2026-11-14). Being applied 2026-11-15: the workgroup, the
-  sandbox database and the user exist; the first two applies failed on IAM limits the mock
-  provider can't check (tag characters, then the inline policy size), fixed in PRs #29 and
-  this one. The policy was checked with the IAM policy simulator before apply. Connecting dbt
-  Cloud is still to do (`docs/runbooks/dbt-cloud.md`).
+- **Status:** Accepted (owner decision 2026-11-14). Applied 2026-11-15 (5 resources; no drift on
+  re-plan). `make dbt-cloud-check` on the real user: 22 of 22 decisions as expected. The first
+  two applies failed on IAM limits the mock provider can't check (tag characters, then the
+  inline policy size), fixed in PRs #29 and #30. No access key exists yet; creating it and
+  connecting dbt Cloud are the owner's steps (`docs/runbooks/dbt-cloud.md` §2 and §3).
 - **Date:** 2026-11-14
 - **Implementation:**
   - Terraform: `infrastructure/live/dev/dbt_cloud/` (owner-applied root; `make dev-dbt-cloud-plan`)
@@ -76,8 +76,8 @@ would also have changed the selective CDC builds of ADR 0050 and needed new fres
 - dbt Cloud's addresses can change (its docs say so). dbt Cloud then gets AccessDenied until
   `dbt_cloud_ip_addresses` is updated and re-applied.
 - `make dbt-cloud-check` (IAM policy simulator, read-only) shows the policy still gives the
-  expected decisions: 22 cases, run before apply against the planned policy on 2026-11-14,
-  all as expected.
+  expected decisions: 22 cases, all as expected against the planned policy (2026-11-14) and
+  against the real user after apply (2026-11-15).
 - The sandbox database and the `dbt_cloud/` prefix hold copies of Gold built from dev Silver.
   They are synthetic and public data, not tenant products; nothing grants tenants access.
 - The free plan's monthly allowance of successful model builds (3,000 on the pricing page read
