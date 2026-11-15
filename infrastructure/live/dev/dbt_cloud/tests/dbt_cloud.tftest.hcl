@@ -74,6 +74,11 @@ run "key_works_only_from_dbt_cloud" {
     error_message = "Default: the six us-east-1 multi-tenant addresses dbt publishes."
   }
   assert {
+    # IAM tag values allow only letters, spaces, digits and _.:/=+-@ (CreateUser rejected "(").
+    condition     = alltrue([for v in values(aws_iam_user.dbt_cloud.tags) : can(regex("^[\\p{L}\\p{Z}\\p{N}_.:/=+@-]*$", v))])
+    error_message = "IAM tag values may contain only letters, spaces, digits and _.:/=+-@."
+  }
+  assert {
     condition     = aws_iam_user.dbt_cloud.force_destroy
     error_message = "Destroy must remove the hand-made access key with the user."
   }
