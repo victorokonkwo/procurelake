@@ -9,17 +9,17 @@ Connection fields are from the dbt platform docs, "Connect Amazon Athena" (read 
 ## 1. Create the AWS side (owner, once)
 
 The deploy role is not allowed to create IAM users (ADR 0036), so the owner applies this root
-with their own administrator credentials. It creates 4 free resources: the IAM user, its inline
-policy, the Athena workgroup and the Glue database. Queries are billed per byte scanned, as for
+with their own administrator credentials. It creates 5 free resources: the IAM user, its managed
+policy and the attachment, the Athena workgroup and the Glue database. Queries are billed per byte scanned, as for
 any Athena query.
 
 ```bash
 cp infrastructure/live/dev/foundation/backend.hcl infrastructure/live/dev/dbt_cloud/backend.hcl
 cp infrastructure/live/dev/dbt_cloud/terraform.tfvars.example infrastructure/live/dev/dbt_cloud/terraform.tfvars
 # set aws_account_id and state_bucket
-make dev-dbt-cloud-plan                       # review: 4 to add
+make -e dev-dbt-cloud-plan                    # review: 5 to add (-e: your session, not .env keys)
 terraform -chdir=infrastructure/live/dev/dbt_cloud apply dbt_cloud.tfplan
-make dbt-cloud-check                          # IAM policy simulator; must print "passed": true
+make -e dbt-cloud-check                       # IAM policy simulator; must print "passed": true
 ```
 
 ## 2. Create the access key (owner)

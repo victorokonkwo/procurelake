@@ -1,8 +1,10 @@
 # ADR 0051: dbt Cloud as a development environment beside the production runner
 
-- **Status:** Accepted (owner decision 2026-11-14). Not yet applied: `dev/dbt_cloud` is planned
-  (4 resources to add) and its policy was checked with the IAM policy simulator before apply.
-  Connecting dbt Cloud is still to do (`docs/runbooks/dbt-cloud.md`).
+- **Status:** Accepted (owner decision 2026-11-14). Being applied 2026-11-15: the workgroup, the
+  sandbox database and the user exist; the first two applies failed on IAM limits the mock
+  provider can't check (tag characters, then the inline policy size), fixed in PRs #29 and
+  this one. The policy was checked with the IAM policy simulator before apply. Connecting dbt
+  Cloud is still to do (`docs/runbooks/dbt-cloud.md`).
 - **Date:** 2026-11-14
 - **Implementation:**
   - Terraform: `infrastructure/live/dev/dbt_cloud/` (owner-applied root; `make dev-dbt-cloud-plan`)
@@ -39,7 +41,8 @@ would also have changed the selective CDC builds of ADR 0050 and needed new fres
    It queries only through its own workgroup, `procurelake-dev-dbt-cloud` (results enforced
    under `athena_results/procurelake-dev-dbt-cloud/`, KMS-encrypted, 1 GiB scan cutoff).
 4. **A dedicated IAM user, `procurelake-dev-dbt-cloud`**, because the connection takes only an
-   access key. Its inline policy:
+   access key. Its policy (customer managed and attached to the user: at about 3,400 characters
+   it is over the 2,048-character limit on a user's inline policies):
    - denies every direct call whose source address is not one of dbt Cloud's published us-east-1
      addresses (`aws:SourceIp`, with `aws:ViaAWSService` false, so that Athena and S3 can still act
      for it). A leaked key does nothing from anywhere else;

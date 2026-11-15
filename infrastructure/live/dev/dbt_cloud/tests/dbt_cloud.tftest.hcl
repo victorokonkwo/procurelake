@@ -2,6 +2,9 @@ mock_provider "aws" {
   mock_resource "aws_athena_workgroup" {
     defaults = { arn = "arn:aws:athena:ca-central-1:123456789012:workgroup/procurelake-dev-dbt-cloud" }
   }
+  mock_resource "aws_iam_policy" {
+    defaults = { arn = "arn:aws:iam::123456789012:policy/procurelake/procurelake-dev-dbt-cloud-development" }
+  }
   mock_resource "aws_iam_user" {
     defaults = { arn = "arn:aws:iam::123456789012:user/procurelake/procurelake-dev-dbt-cloud" }
   }
@@ -37,18 +40,27 @@ run "builds_only_into_the_sandbox" {
   }
   assert {
     condition = alltrue([
-      for s in jsondecode(aws_iam_user_policy.dbt_cloud.policy).Statement :
+      for s in jsondecode(aws_iam_policy.dbt_cloud.policy).Statement :
       length(regexall("gold|bronze|raw-|products-", jsonencode(s))) == 0
     ])
     error_message = "The dbt Cloud user must not reach Gold, Bronze or the products bucket."
   }
   assert {
     condition = alltrue(flatten([
-      for s in jsondecode(aws_iam_user_policy.dbt_cloud.policy).Statement : [
+      for s in jsondecode(aws_iam_policy.dbt_cloud.policy).Statement : [
         for r in flatten([s.Resource]) : !startswith(r, "arn:aws:glue") || r == "arn:aws:glue:ca-central-1:123456789012:catalog" || strcontains(r, "procurelake_dev_dbt_cloud") || (strcontains(r, "procurelake_dev_silver") && !contains(flatten([s.Action]), "glue:CreateTable"))
       ]
     ]))
     error_message = "Glue writes are limited to the sandbox database; Silver is read-only."
+  }
+  assert {
+    # IAM counts the policy without whitespace; jsonencode output has none.
+    condition     = length(aws_iam_policy.dbt_cloud.policy) <= 6144
+    error_message = "A managed policy may be at most 6,144 characters (IAM quotas)."
+  }
+  assert {
+    condition     = aws_iam_user_policy_attachment.dbt_cloud.user == aws_iam_user.dbt_cloud.name
+    error_message = "The policy is attached to the dbt Cloud user."
   }
   assert {
     condition     = output.dbt_cloud_connection.schema == "procurelake_dev_dbt_cloud" && output.dbt_cloud_connection.work_group == "procurelake-dev-dbt-cloud"
@@ -61,7 +73,7 @@ run "key_works_only_from_dbt_cloud" {
 
   assert {
     condition = anytrue([
-      for s in jsondecode(aws_iam_user_policy.dbt_cloud.policy).Statement :
+      for s in jsondecode(aws_iam_policy.dbt_cloud.policy).Statement :
       try(jsonencode([s.Effect, s.Action, s.Resource, s.Condition]), "") == jsonencode([
         "Deny", "*", "*",
         { Bool = { "aws:ViaAWSService" = "false" }, NotIpAddress = { "aws:SourceIp" = var.dbt_cloud_ip_addresses } },
@@ -89,7 +101,7 @@ run "kms_only_through_s3" {
 
   assert {
     condition = alltrue([
-      for s in jsondecode(aws_iam_user_policy.dbt_cloud.policy).Statement :
+      for s in jsondecode(aws_iam_policy.dbt_cloud.policy).Statement :
       s.Condition.StringEquals["kms:ViaService"] == "s3.ca-central-1.amazonaws.com"
       if length(regexall("kms:", jsonencode(s.Action))) > 0
     ])
